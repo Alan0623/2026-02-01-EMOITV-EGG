@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NeuroRest v1.1 — Emotiv EEG Dashboard</title>
+    <meta name="description" content="NeuroRest 即時腦波資料監控儀表板，顯示 Emotiv EEG 裝置的八種資料串流。" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+    <!-- HEADER -->
+    <header class="header">
+        <div class="header-brand">
+            <div class="brand-icon">
+                <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="16" cy="16" r="14" stroke="url(#grad1)" stroke-width="2" />
+                    <path d="M6 16 Q10 8 16 16 Q22 24 26 16" stroke="url(#grad1)" stroke-width="2"
+                        stroke-linecap="round" fill="none" />
+                    <defs>
+                        <linearGradient id="grad1" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                            <stop offset="0%" stop-color="#7c3aed" />
+                            <stop offset="100%" stop-color="#06b6d4" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+            </div>
+            <span class="brand-name">NeuroRest</span>
+            <span class="brand-badge">LIVE</span>
+            <span class="headset-name" id="headsetName" style="display:none"></span>
+        </div>
+
+        <nav class="tab-nav" id="tabNav">
+            <button class="tab-btn active" data-tab="eeg">
+                <span class="tab-icon">🧠</span><span class="tab-label">腦電波 EEG</span>
+            </button>
+            <button class="tab-btn" data-tab="mot">
+                <span class="tab-icon">📐</span><span class="tab-label">動作感測</span>
+            </button>
+            <button class="tab-btn" data-tab="dev">
+                <span class="tab-icon">📡</span><span class="tab-label">裝置資訊</span>
+            </button>
+            <button class="tab-btn" data-tab="met">
+                <span class="tab-icon">🎯</span><span class="tab-label">效能指標</span>
+            </button>
+            <button class="tab-btn" data-tab="pow">
+                <span class="tab-icon">⚡</span><span class="tab-label">頻帶功率</span>
+            </button>
+            <button class="tab-btn" data-tab="com">
+                <span class="tab-icon">🧩</span><span class="tab-label">心智指令</span>
+            </button>
+            <button class="tab-btn" data-tab="fac">
+                <span class="tab-icon">😊</span><span class="tab-label">臉部表情</span>
+            </button>
+            <button class="tab-btn" data-tab="sys">
+                <span class="tab-icon">⚙️</span><span class="tab-label">系統事件</span>
+            </button>
+        </nav>
+
+        <div class="header-status">
+            <span class="status-dot" id="statusDot"></span>
+            <span class="status-text" id="statusText">未連線</span>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="main">
+
+        <!-- ── EEG ── -->
+        <section class="tab-panel active" id="panel-eeg">
+            <div class="panel-header">
+                <h1>🧠 腦電波 <span>EEG</span></h1>
+                <p>即時顯示各電極的腦電位訊號（μV）</p>
+            </div>
+            <div class="eeg-grid" id="eegGrid">
+                <!-- channels injected by JS -->
+            </div>
+            <div class="chart-wrap">
+                <canvas id="eegCanvas"></canvas>
+            </div>
+            <div class="raw-box">
+                <div class="raw-label">原始資料 Raw Data</div>
+                <pre id="eegRaw">等待資料…</pre>
+            </div>
+        </section>
+
+        <!-- ── Motion ── -->
+        <section class="tab-panel" id="panel-mot">
+            <div class="panel-header">
+                <h1>📐 動作感測 <span>Motion</span></h1>
+                <p>四元數姿態、加速度計、磁力計即時數值</p>
+            </div>
+            <div class="motion-grid">
+                <div class="motion-card" id="motQuat">
+                    <div class="mc-title">四元數 Quaternion</div>
+                    <div class="mc-values" id="quatValues">
+                        <div class="mv-row"><span>Q0</span><span id="q0">—</span></div>
+                        <div class="mv-row"><span>Q1</span><span id="q1">—</span></div>
+                        <div class="mv-row"><span>Q2</span><span id="q2">—</span></div>
+                        <div class="mv-row"><span>Q3</span><span id="q3">—</span></div>
+                    </div>
+                </div>
+                <div class="motion-card">
+                    <div class="mc-title">加速度計 Accelerometer</div>
+                    <div class="mc-values">
+                        <div class="mv-row"><span>X</span><span id="accX">—</span></div>
+                        <div class="mv-row"><span>Y</span><span id="accY">—</span></div>
+                        <div class="mv-row"><span>Z</span><span id="accZ">—</span></div>
+                    </div>
+                </div>
+                <div class="motion-card">
+                    <div class="mc-title">磁力計 Magnetometer</div>
+                    <div class="mc-values">
+                        <div class="mv-row"><span>X</span><span id="magX">—</span></div>
+                        <div class="mv-row"><span>Y</span><span id="magY">—</span></div>
+                        <div class="mv-row"><span>Z</span><span id="magZ">—</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="raw-box">
+                <div class="raw-label">原始資料 Raw Data</div>
+                <pre id="motRaw">等待資料…</pre>
+            </div>
+        </section>
+
+        <!-- ── Device ── -->
+        <section class="tab-panel" id="panel-dev">
+            <div class="panel-header">
+                <h1>📡 裝置資訊 <span>Device Info</span></h1>
+                <p>電極接觸品質（CQ）與電池狀態</p>
+            </div>
+            <div class="dev-top">
+                <div class="battery-card">
+                    <div class="bat-label">電池電量</div>
+                    <div class="bat-bar-wrap">
+                        <div class="bat-bar" id="batBar"></div>
+                    </div>
+                    <div class="bat-pct" id="batPct">—%</div>
+                </div>
+                <div class="signal-card">
+                    <div class="bat-label">整體訊號品質</div>
+                    <div class="signal-ring" id="signalRing">
+                        <svg viewBox="0 0 80 80">
+                            <circle cx="40" cy="40" r="34" stroke="#1e293b" stroke-width="8" fill="none" />
+                            <circle cx="40" cy="40" r="34" stroke="url(#sg)" stroke-width="8" fill="none"
+                                stroke-dasharray="213.6" stroke-dashoffset="213.6" stroke-linecap="round"
+                                transform="rotate(-90 40 40)" id="signalArc" />
+                            <defs>
+                                <linearGradient id="sg" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+                                    <stop offset="0%" stop-color="#7c3aed" />
+                                    <stop offset="100%" stop-color="#06b6d4" />
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <span id="signalPct">—%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="cq-grid" id="cqGrid">
+                <!-- electrode CQ injected by JS -->
+            </div>
+            <div class="raw-box">
+                <div class="raw-label">原始資料 Raw Data</div>
+                <pre id="devRaw">等待資料…</pre>
+            </div>
+        </section>
+
+        <!-- ── Performance Metrics ── -->
+        <section class="tab-panel" id="panel-met">
+            <div class="panel-header">
+                <h1>🎯 效能指標 <span>Performance Metrics</span></h1>
+                <p>即時認知狀態評估</p>
+            </div>
+            <div class="met-grid" id="metGrid">
+                <!-- metric cards injected by JS -->
+            </div>
+            <div class="raw-box">
+                <div class="raw-label">原始資料 Raw Data</div>
+                <pre id="metRaw">等待資料…</pre>
+            </div>
+        </section>
+
+        <!-- ── Band Power ── -->
+        <section class="tab-panel" id="panel-pow">
+            <div class="panel-header">
+                <h1>⚡ 頻帶功率 <span>Band Power</span></h1>
+                <p>各電極 theta / alpha / beta / gamma 統計平均曲線圖，betaL + betaH 合併為 beta</p>
+            </div>
+
+            <!-- ── 統計平均曲線圖 ── -->
+            <div class="pow-avg-block">
+                <div class="pow-avg-header">
+                    <span class="pow-avg-title">全電極平均腦波功率</span>
+                    <div class="pow-avg-legend">
+                        <span class="leg-dot" style="background:#7c3aed"></span><span>Theta</span>
+                        <span class="leg-dot" style="background:#06b6d4"></span><span>Alpha</span>
+                        <span class="leg-dot" style="background:#10b981"></span><span>Beta</span>
+                        <span class="leg-dot" style="background:#ef4444"></span><span>Gamma</span>
+                    </div>
+                </div>
+                <!-- Current value badges -->
+                <div class="pow-avg-vals" id="powAvgVals">
+                    <div class="pav-item"><span class="pav-dot" style="background:#7c3aed"></span><span
+                            class="pav-name">Theta</span><span class="pav-val" id="avgTheta">—</span></div>
+                    <div class="pav-item"><span class="pav-dot" style="background:#06b6d4"></span><span
+                            class="pav-name">Alpha</span><span class="pav-val" id="avgAlpha">—</span></div>
+                    <div class="pav-item"><span class="pav-dot" style="background:#10b981"></span><span
+                            class="pav-name">Beta</span><span class="pav-val" id="avgBeta">—</span></div>
+                    <div class="pav-item"><span class="pav-dot" style="background:#ef4444"></span><span
+                            class="pav-name">Gamma</span><span class="pav-val" id="avgGamma">—</span></div>
+                </div>
+                <div class="pow-avg-chart-wrap">
+                    <canvas id="powAvgCanvas"></canvas>
+                </div>
+            </div>
+
+            <div class="pow-grid" id="powGrid">
+                <!-- band power cards injected by JS -->
+            </div>
+            <div class="raw-box">
+                <div class="raw-label">原始資料 Raw Data</div>
+                <pre id="powRaw">等待資料…</pre>
+            </div>
+        </section>
+
+        <!-- ── Mental Command ── -->
+        <section class="tab-panel" id="panel-com">
+            <div class="panel-header">
+                <h1>🧩 心智指令 <span>Mental Command</span></h1>
+                <p>即時偵測心智動作與信心強度</p>
+            </div>
+            <div class="com-center">
+                <div class="com-action-wrap">
+                    <div class="com-ring">
+                        <div class="com-action-label">當前指令</div>
+                        <div class="com-action" id="comAction">—</div>
+                    </div>
+                </div>
+                <div class="com-power-wrap">
+                    <div class="cp-label">信心強度 Power</div>
+                    <div class="cp-bar-wrap">
+                        <div class="cp-bar" id="comPowerBar"></div>
+                    </div>
+                    <div class="cp-val" id="comPowerVal">—</div>
+                </div>
+                <div class="com-history" id="comHistory">
+                    <div class="ch-title">指令歷史</div>
+                    <ul id="comHistoryList"></ul>
+                </div>
+            </div>
+            <div class="raw-box">
+                <div class="raw-label">原始資料 Raw Data</div>
+                <pre id="comRaw">等待資料…</pre>
+            </div>
+        </section>
+
+        <!-- ── Facial Expression ── -->
+        <section class="tab-panel" id="panel-fac">
+            <div class="panel-header">
+                <h1>😊 臉部表情 <span>Facial Expression</span></h1>
+                <p>眼部動作、上下臉部動作與強度</p>
+            </div>
+            <div class="fac-grid">
+                <div class="fac-card">
+                    <div class="fc-icon">👁️</div>
+                    <div class="fc-title">眼部動作</div>
+                    <div class="fc-val" id="eyeAct">—</div>
+                </div>
+                <div class="fac-card">
+                    <div class="fc-icon">🙂</div>
+                    <div class="fc-title">上臉部動作</div>
+                    <div class="fc-val" id="uAct">—</div>
+                    <div class="fc-sub">強度 <span id="uPow">—</span></div>
+                </div>
+                <div class="fac-card">
+                    <div class="fc-icon">😶</div>
+                    <div class="fc-title">下臉部動作</div>
+                    <div class="fc-val" id="lAct">—</div>
+                    <div class="fc-sub">強度 <span id="lPow">—</span></div>
+                </div>
+            </div>
+            <div class="raw-box">
+                <div class="raw-label">原始資料 Raw Data</div>
+                <pre id="facRaw">等待資料…</pre>
+            </div>
+        </section>
+
+        <!-- ── System ── -->
+        <section class="tab-panel" id="panel-sys">
+            <div class="panel-header">
+                <h1>⚙️ 系統事件 <span>System</span></h1>
+                <p>訓練事件與系統層級訊息</p>
+            </div>
+            <div class="sys-log-wrap">
+                <ul class="sys-log" id="sysLog">
+                    <li class="sys-log-empty">尚無系統事件…</li>
+                </ul>
+            </div>
+            <div class="raw-box">
+                <div class="raw-label">原始資料 Raw Data</div>
+                <pre id="sysRaw">等待資料…</pre>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- CONNECTION MODAL -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <div class="modal-logo">
+                <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" width="56" height="56">
+                    <circle cx="24" cy="24" r="22" stroke="url(#mg)" stroke-width="2.5" />
+                    <path d="M8 24 Q14 10 24 24 Q34 38 40 24" stroke="url(#mg)" stroke-width="2.5"
+                        stroke-linecap="round" fill="none" />
+                    <defs>
+                        <linearGradient id="mg" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+                            <stop offset="0%" stop-color="#7c3aed" />
+                            <stop offset="100%" stop-color="#06b6d4" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <h2>NeuroRest</h2>
+            </div>
+            <p class="modal-desc">連接至 Emotiv Cortex WebSocket 服務<br /><code>wss://localhost:6868</code></p>
+            <div class="modal-field">
+                <label>Client ID</label>
+                <input type="text" id="clientId" placeholder="your_app_client_id" />
+            </div>
+            <div class="modal-field">
+                <label>Client Secret</label>
+                <input type="password" id="clientSecret" placeholder="your_app_client_secret" />
+            </div>
+            <div class="modal-toggle-row">
+                <label class="toggle-label" for="demoToggle">
+                    <span>模擬資料模式</span>
+                    <span class="toggle-hint">（預設關閉，使用真實裝置資料）</span>
+                </label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="demoToggle" />
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <button class="modal-btn" id="connectBtn">連線至 Emotiv Cortex</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
