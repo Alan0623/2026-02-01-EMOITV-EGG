@@ -75,8 +75,14 @@
         <!-- ── EEG ── -->
         <section class="tab-panel active" id="panel-eeg">
             <div class="panel-header">
-                <h1>🧠 腦電波 <span>EEG</span></h1>
-                <p>即時顯示各電極的腦電位訊號（μV）</p>
+                <div class="panel-header-text">
+                    <h1>🧠 腦電波 <span>EEG</span></h1>
+                    <p>即時顯示各電極的腦電位訊號（μV）</p>
+                </div>
+                <div class="csv-btn-wrap">
+                    <button class="csv-btn" id="csvBtn-eeg" onclick="exportCSV('eeg')">⬇ 匯出 CSV</button>
+                    <div class="csv-live-clock" id="clock-eeg"></div>
+                </div>
             </div>
             <div class="eeg-grid" id="eegGrid">
                 <!-- channels injected by JS -->
@@ -93,8 +99,14 @@
         <!-- ── Motion ── -->
         <section class="tab-panel" id="panel-mot">
             <div class="panel-header">
-                <h1>📐 動作感測 <span>Motion</span></h1>
-                <p>四元數姿態、加速度計、磁力計即時數值</p>
+                <div class="panel-header-text">
+                    <h1>📐 動作感測 <span>Motion</span></h1>
+                    <p>四元數姿態、加速度計、磁力計即時數值</p>
+                </div>
+                <div class="csv-btn-wrap">
+                    <button class="csv-btn" id="csvBtn-mot" onclick="exportCSV('mot')">⬇ 匯出 CSV</button>
+                    <div class="csv-live-clock" id="clock-mot"></div>
+                </div>
             </div>
             <div class="motion-grid">
                 <div class="motion-card" id="motQuat">
@@ -132,8 +144,14 @@
         <!-- ── Device ── -->
         <section class="tab-panel" id="panel-dev">
             <div class="panel-header">
-                <h1>📡 裝置資訊 <span>Device Info</span></h1>
-                <p>電極接觸品質（CQ）與電池狀態</p>
+                <div class="panel-header-text">
+                    <h1>📡 裝置資訊 <span>Device Info</span></h1>
+                    <p>電極接觸品質（CQ）與電池狀態</p>
+                </div>
+                <div class="csv-btn-wrap">
+                    <button class="csv-btn" id="csvBtn-dev" onclick="exportCSV('dev')">⬇ 匯出 CSV</button>
+                    <div class="csv-live-clock" id="clock-dev"></div>
+                </div>
             </div>
             <div class="dev-top">
                 <div class="battery-card">
@@ -174,11 +192,44 @@
         <!-- ── Performance Metrics ── -->
         <section class="tab-panel" id="panel-met">
             <div class="panel-header">
-                <h1>🎯 效能指標 <span>Performance Metrics</span></h1>
-                <p>即時認知狀態評估</p>
+                <div class="panel-header-text">
+                    <h1>🎯 效能指標 <span>Performance Metrics</span></h1>
+                    <p>即時認知狀態評估</p>
+                </div>
+                <div class="csv-btn-wrap">
+                    <button class="csv-btn" id="csvBtn-met" onclick="exportCSV('met')">⬇ 匯出 CSV</button>
+                    <div class="csv-live-clock" id="clock-met"></div>
+                </div>
             </div>
             <div class="met-grid" id="metGrid">
                 <!-- metric cards injected by JS -->
+            </div>
+            <div class="pow-table-box">
+                <div class="pow-table-header">
+                    <span class="pow-table-title">🎯 效能指標歷史記錄</span>
+                    <span class="pow-table-count" id="metTableCount">0 筆</span>
+                </div>
+                <div class="pow-table-scroll">
+                    <table class="pow-history-table" id="metHistoryTable">
+                        <thead>
+                            <tr>
+                                <th>時間</th>
+                                <th style="color:#06b6d4">投入度</th>
+                                <th style="color:#f59e0b">興奮度</th>
+                                <th style="color:#f59e0b">長期興奮</th>
+                                <th style="color:#ef4444">壓力</th>
+                                <th style="color:#10b981">放鬆度</th>
+                                <th style="color:#a78bfa">興趣度</th>
+                                <th style="color:#7c3aed">專注度</th>
+                            </tr>
+                        </thead>
+                        <tbody id="metTableBody">
+                            <tr class="met-table-empty">
+                                <td colspan="8">等待資料…</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
             <div class="raw-box">
                 <div class="raw-label">原始資料 Raw Data</div>
@@ -189,8 +240,14 @@
         <!-- ── Band Power ── -->
         <section class="tab-panel" id="panel-pow">
             <div class="panel-header">
-                <h1>⚡ 頻帶功率 <span>Band Power</span></h1>
-                <p>各電極 theta / alpha / beta / gamma 統計平均曲線圖，betaL + betaH 合併為 beta</p>
+                <div class="panel-header-text">
+                    <h1>⚡ 頻帶功率 <span>Band Power</span></h1>
+                    <p>各電極 theta / alpha / beta / gamma 統計平均曲線圖，betaL + betaH 合併為 beta</p>
+                </div>
+                <div class="csv-btn-wrap">
+                    <button class="csv-btn" id="csvBtn-pow" onclick="exportCSV('pow')">⬇ 匯出 CSV</button>
+                    <div class="csv-live-clock" id="clock-pow"></div>
+                </div>
             </div>
 
             <!-- ── 統計平均曲線圖 ── -->
@@ -206,6 +263,9 @@
                 </div>
                 <!-- Current value badges -->
                 <div class="pow-avg-vals" id="powAvgVals">
+                    <div class="pav-item pav-ratio"><span class="pav-dot"
+                            style="background:linear-gradient(135deg,#f59e0b,#ef4444)"></span><span
+                            class="pav-name">θ/α</span><span class="pav-val" id="avgThetaAlpha">—</span></div>
                     <div class="pav-item"><span class="pav-dot" style="background:#7c3aed"></span><span
                             class="pav-name">Theta</span><span class="pav-val" id="avgTheta">—</span></div>
                     <div class="pav-item"><span class="pav-dot" style="background:#06b6d4"></span><span
@@ -223,17 +283,44 @@
             <div class="pow-grid" id="powGrid">
                 <!-- band power cards injected by JS -->
             </div>
-            <div class="raw-box">
-                <div class="raw-label">原始資料 Raw Data</div>
-                <pre id="powRaw">等待資料…</pre>
+            <div class="pow-table-box">
+                <div class="pow-table-header">
+                    <span class="pow-table-title">📊 頻帶功率歷史記錄</span>
+                    <span class="pow-table-count" id="powTableCount">0 筆</span>
+                </div>
+                <div class="pow-table-scroll" id="powTableScroll">
+                    <table class="pow-history-table" id="powHistoryTable">
+                        <thead>
+                            <tr>
+                                <th>時間</th>
+                                <th style="color:#7c3aed">Theta</th>
+                                <th style="color:#06b6d4">Alpha</th>
+                                <th style="color:#10b981">Beta</th>
+                                <th style="color:#ef4444">Gamma</th>
+                                <th style="color:#f59e0b">&theta;/&alpha;</th>
+                            </tr>
+                        </thead>
+                        <tbody id="powTableBody">
+                            <tr class="pow-table-empty">
+                                <td colspan="6">等待資料…</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </section>
 
         <!-- ── Mental Command ── -->
         <section class="tab-panel" id="panel-com">
             <div class="panel-header">
-                <h1>🧩 心智指令 <span>Mental Command</span></h1>
-                <p>即時偵測心智動作與信心強度</p>
+                <div class="panel-header-text">
+                    <h1>🧩 心智指令 <span>Mental Command</span></h1>
+                    <p>即時偵測心智動作與信心強度</p>
+                </div>
+                <div class="csv-btn-wrap">
+                    <button class="csv-btn" id="csvBtn-com" onclick="exportCSV('com')">⬇ 匯出 CSV</button>
+                    <div class="csv-live-clock" id="clock-com"></div>
+                </div>
             </div>
             <div class="com-center">
                 <div class="com-action-wrap">
@@ -263,8 +350,14 @@
         <!-- ── Facial Expression ── -->
         <section class="tab-panel" id="panel-fac">
             <div class="panel-header">
-                <h1>😊 臉部表情 <span>Facial Expression</span></h1>
-                <p>眼部動作、上下臉部動作與強度</p>
+                <div class="panel-header-text">
+                    <h1>😊 臉部表情 <span>Facial Expression</span></h1>
+                    <p>眼部動作、上下臉部動作與強度</p>
+                </div>
+                <div class="csv-btn-wrap">
+                    <button class="csv-btn" id="csvBtn-fac" onclick="exportCSV('fac')">⬇ 匯出 CSV</button>
+                    <div class="csv-live-clock" id="clock-fac"></div>
+                </div>
             </div>
             <div class="fac-grid">
                 <div class="fac-card">
@@ -285,6 +378,31 @@
                     <div class="fc-sub">強度 <span id="lPow">—</span></div>
                 </div>
             </div>
+            <div class="pow-table-box">
+                <div class="pow-table-header">
+                    <span class="pow-table-title">😊 臉部表情歷史記錄</span>
+                    <span class="pow-table-count" id="facTableCount">0 筆</span>
+                </div>
+                <div class="pow-table-scroll">
+                    <table class="pow-history-table" id="facHistoryTable">
+                        <thead>
+                            <tr>
+                                <th>時間</th>
+                                <th>眼部動作</th>
+                                <th>上臉部動作</th>
+                                <th style="color:#a78bfa">上臉部強度</th>
+                                <th>下臉部動作</th>
+                                <th style="color:#a78bfa">下臉部強度</th>
+                            </tr>
+                        </thead>
+                        <tbody id="facTableBody">
+                            <tr class="fac-table-empty">
+                                <td colspan="6">等待資料…</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
             <div class="raw-box">
                 <div class="raw-label">原始資料 Raw Data</div>
                 <pre id="facRaw">等待資料…</pre>
@@ -294,8 +412,14 @@
         <!-- ── System ── -->
         <section class="tab-panel" id="panel-sys">
             <div class="panel-header">
-                <h1>⚙️ 系統事件 <span>System</span></h1>
-                <p>訓練事件與系統層級訊息</p>
+                <div class="panel-header-text">
+                    <h1>⚙️ 系統事件 <span>System</span></h1>
+                    <p>訓練事件與系統層級訊息</p>
+                </div>
+                <div class="csv-btn-wrap">
+                    <button class="csv-btn" id="csvBtn-sys" onclick="exportCSV('sys')">⬇ 匯出 CSV</button>
+                    <div class="csv-live-clock" id="clock-sys"></div>
+                </div>
             </div>
             <div class="sys-log-wrap">
                 <ul class="sys-log" id="sysLog">

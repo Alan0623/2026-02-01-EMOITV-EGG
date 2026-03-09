@@ -22,6 +22,18 @@ def load_env():
     return env
 
 class ConfigHandler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        # 允許 blob: URL 下載和 SharedArrayBuffer（解決 CSV 無法下載問題）
+        self.send_header('Cross-Origin-Opener-Policy', 'same-origin')
+        self.send_header('Cross-Origin-Embedder-Policy', 'require-corp')
+        self.send_header('Cross-Origin-Resource-Policy', 'cross-origin')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        # 不快取，確保每次都載入最新 HTML/CSS/JS
+        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
+        super().end_headers()
+
     def do_GET(self):
         if self.path == '/config':
             env = load_env()

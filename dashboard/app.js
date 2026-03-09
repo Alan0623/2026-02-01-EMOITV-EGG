@@ -30,12 +30,25 @@ const POW_HISTORY = 150;
 const POW_BAND_COLORS = { theta: '#7c3aed', alpha: '#06b6d4', beta: '#10b981', gamma: '#ef4444' };
 let powAvgBuffer = { theta: new Array(POW_HISTORY).fill(0), alpha: new Array(POW_HISTORY).fill(0), beta: new Array(POW_HISTORY).fill(0), gamma: new Array(POW_HISTORY).fill(0) };
 
+// ── Band Power history table data (for CSV export) ──
+let powTableData = [];  // [{time, theta, alpha, beta, gamma}, ...]
+let lastPowRecordTime = 0; // 節流：每秒最多記錄 1 筆到 powTableData
+
 // ── State ──
 let demoMode = false;
 let demoInterval = null;
 let ws = null;
 
 let comHistory = [];
+
+// ── 歷史記錄 buffer（無上限，用於 CSV 完整匯出）──
+let motHistory = [];  // [{time, q0,q1,q2,q3,accX,accY,accZ,magX,magY,magZ}, ...]
+let devHistory = [];  // [{time, signal, batteryPercent, AF3,T7,Pz,T8,AF4,OVERALL}, ...]
+let metHistory = [];  // [{time, eng, exc, lex, str, rel, int, foc}, ...]
+let lastMetRecordTime = 0;  // 節流：每秒最多記錄 1 筆
+let facHistory = [];  // [{time, eyeAct, uAct, uPow, lAct, lPow}, ...]
+let lastFacRecordTime = 0;  // 節流：每秒最多記錄 1 筆
+let sysHistory = [];  // [{time, msg, tag}, ...]
 
 // ── Watchdog ──
 let lastPowTime = Date.now();
@@ -76,10 +89,21 @@ function initUI() {
     })
     .catch(err => console.log('Config fetch failed (local file mode?):', err));
 
-  // Watchdog: if no pow data for 2 seconds, reset to 0
+  // Watchdog: if no pow data for 2 seconds, reset display to 0
+  // NOTE: 只重置 UI 顯示，不追加到 powTableData（避免汙染歷史記錄）
   setInterval(() => {
     if (Date.now() - lastPowTime > 2000) {
-      updatePow({ pow: new Array(EEG_CHANNELS.length * 5).fill(0), time: Date.now() });
+      const zeros = new Array(EEG_CHANNELS.length * 5).fill(0);
+      let idx = 0;
+      EEG_CHANNELS.forEach(ch => {
+        BANDS.forEach(b => {
+          const bar = document.getElementById('powBar-' + ch + '-' + b);
+          const val = document.getElementById('powVal-' + ch + '-' + b);
+          if (bar) bar.style.width = '0%';
+          if (val) val.textContent = '0.00';
+          idx++;
+        });
+      });
     }
   }, 1000);
 }
@@ -451,6 +475,13 @@ function updateMot(data) {
   set('accX', m[6]); set('accY', m[7]); set('accZ', m[8]);
   set('magX', m[9]); set('magY', m[10]); set('magZ', m[11]);
   document.getElementById('motRaw').textContent = JSON.stringify(data, null, 2);
+  // 追加歷史記錄
+  motHistory.push({
+    time: getTimestamp(),
+    q0: m[2], q1: m[3], q2: m[4], q3: m[5],
+    accX: m[6], accY: m[7], accZ: m[8],
+    magX: m[9], magY: m[10], magZ: m[11]
+  });
 }
 
 function updateDev(data) {
@@ -478,6 +509,10 @@ function updateDev(data) {
     if (valEl) valEl.textContent = val;
   });
   document.getElementById('devRaw').textContent = JSON.stringify(data, null, 2);
+  // 追加歷史記錄
+  const rec = { time: getTimestamp(), signal: sig.toFixed(1) + '%', batteryPercent: pct + '%' };
+  CQ_CHANNELS.forEach((ch, i) => { rec[ch] = devArr[i] !== undefined ? devArr[i] : 0; });
+  devHistory.push(rec);
 }
 
 function updateMet(data) {
@@ -492,7 +527,8 @@ function updateMet(data) {
     int: { isActive: m[9], val: m[10] },
     foc: { isActive: m[11], val: m[12] },
   };
-  METRICS.forEach(({ key }) => {
+  const timeStr = getTimestamp();
+  METRICS.forEach(({ key, label }) => {
     const d = map[key];
     if (!d) return;
     const v = d.val;
@@ -509,6 +545,42 @@ function updateMet(data) {
     if (card) card.classList.toggle('active-metric', !!d.isActive);
   });
   document.getElementById('metRaw').textContent = JSON.stringify(data, null, 2);
+
+  // ── 每秒記錄 1 筆（所有指標單行）──
+  var now_ms = Date.now();
+  if (now_ms - lastMetRecordTime >= 1000) {
+    lastMetRecordTime = now_ms;
+    var fmt = function (key) {
+      var v = map[key] && typeof map[key].val === 'number' ? (map[key].val * 100).toFixed(1) + '%' : '—';
+      return v;
+    };
+    var rec = {
+      time: timeStr,
+      eng: fmt('eng'), exc: fmt('exc'), lex: fmt('lex'),
+      str: fmt('str'), rel: fmt('rel'), int: fmt('int'), foc: fmt('foc')
+    };
+    metHistory.push(rec);
+
+    var tbody = document.getElementById('metTableBody');
+    if (tbody) {
+      var empty = tbody.querySelector('.met-table-empty');
+      if (empty) empty.remove();
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + timeStr + '</td>'
+        + '<td style="color:#06b6d4">' + rec.eng + '</td>'
+        + '<td style="color:#f59e0b">' + rec.exc + '</td>'
+        + '<td style="color:#f59e0b">' + rec.lex + '</td>'
+        + '<td style="color:#ef4444">' + rec.str + '</td>'
+        + '<td style="color:#10b981">' + rec.rel + '</td>'
+        + '<td style="color:#a78bfa">' + rec.int + '</td>'
+        + '<td style="color:#7c3aed">' + rec.foc + '</td>';
+      tbody.prepend(tr);
+      while (tbody.rows.length > 200) tbody.deleteRow(tbody.rows.length - 1);
+    }
+    var countEl = document.getElementById('metTableCount');
+    if (countEl) countEl.textContent = metHistory.length + ' 筆';
+  }
 }
 
 function updatePow(data) {
@@ -550,6 +622,9 @@ function updatePow(data) {
   setAvg('avgAlpha', avgAlpha);
   setAvg('avgBeta', avgBeta);
   setAvg('avgGamma', avgGamma);
+  // θ/α ratio
+  const thetaAlphaEl = document.getElementById('avgThetaAlpha');
+  if (thetaAlphaEl) thetaAlphaEl.textContent = avgAlpha > 0 ? (avgTheta / avgAlpha).toFixed(3) : '∞';
 
   // Push to ring buffers
   const push = (key, v) => { powAvgBuffer[key].push(v); if (powAvgBuffer[key].length > POW_HISTORY) powAvgBuffer[key].shift(); };
@@ -559,7 +634,36 @@ function updatePow(data) {
   push('gamma', avgGamma);
 
   drawPowAvgCanvas();
-  document.getElementById('powRaw').textContent = JSON.stringify(data, null, 2);
+
+  // ── 追加到歷史表格（節流：每秒最多 1 筆，避免資料爆炸）──
+  var now_ms = Date.now();
+  if (now_ms - lastPowRecordTime >= 1000) {
+    lastPowRecordTime = now_ms;
+    var timeStr = getTimestamp();
+    var thetaAlpha = avgAlpha > 0 ? avgTheta / avgAlpha : null;
+    var row = { time: timeStr, theta: avgTheta, alpha: avgAlpha, beta: avgBeta, gamma: avgGamma, thetaAlpha: thetaAlpha };
+    powTableData.push(row);
+
+    var tbody = document.getElementById('powTableBody');
+    if (tbody) {
+      var empty = tbody.querySelector('.pow-table-empty');
+      if (empty) empty.remove();
+      // DOM 中只保留最近 200 列，避免 DOM 過重
+      var tr = document.createElement('tr');
+      var taStr = thetaAlpha !== null ? thetaAlpha.toFixed(3) : '∞';
+      tr.innerHTML = '<td>' + timeStr + '</td>'
+        + '<td style="color:#7c3aed">' + avgTheta.toFixed(3) + '</td>'
+        + '<td style="color:#06b6d4">' + avgAlpha.toFixed(3) + '</td>'
+        + '<td style="color:#10b981">' + avgBeta.toFixed(3) + '</td>'
+        + '<td style="color:#ef4444">' + avgGamma.toFixed(3) + '</td>'
+        + '<td style="color:#f59e0b">' + taStr + '</td>';
+      tbody.prepend(tr);
+      while (tbody.rows.length > 200) tbody.deleteRow(tbody.rows.length - 1);
+    }
+    // 更新計數（顯示完整歷史筆數，非 DOM 截斷後數量）
+    var countEl = document.getElementById('powTableCount');
+    if (countEl) countEl.textContent = powTableData.length + ' 筆';
+  }
 }
 
 function drawPowAvgCanvas() {
@@ -610,11 +714,11 @@ function updateCom(data) {
   document.getElementById('comPowerBar').style.width = (power * 100) + '%';
   document.getElementById('comPowerVal').textContent = (power * 100).toFixed(1) + '%';
 
-  // history
+  // history（無上限，保留所有記錄供 CSV 匯出）
   comHistory.unshift({ action, power, time: new Date().toLocaleTimeString() });
-  if (comHistory.length > 8) comHistory.pop();
+  // UI 只顯示最近 8 筆（comHistory 本身保留全部供 CSV 匯出）
   const list = document.getElementById('comHistoryList');
-  list.innerHTML = comHistory.map(h => `
+  list.innerHTML = comHistory.slice(0, 8).map(h => `
     <li>
       <span class="sys-time">${h.time}</span>
       <span class="sys-msg">${h.action}</span>
@@ -627,12 +731,43 @@ function updateCom(data) {
 
 function updateFac(data) {
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-  set('eyeAct', data.eyeAct || '—');
-  set('uAct', data.uAct || '—');
-  set('uPow', typeof data.uPow === 'number' ? (data.uPow * 100).toFixed(1) + '%' : '—');
-  set('lAct', data.lAct || '—');
-  set('lPow', typeof data.lPow === 'number' ? (data.lPow * 100).toFixed(1) + '%' : '—');
+  const eyeAct = data.eyeAct || '—';
+  const uAct = data.uAct || '—';
+  const lAct = data.lAct || '—';
+  const uPow = typeof data.uPow === 'number' ? (data.uPow * 100).toFixed(1) + '%' : '—';
+  const lPow = typeof data.lPow === 'number' ? (data.lPow * 100).toFixed(1) + '%' : '—';
+  set('eyeAct', eyeAct);
+  set('uAct', uAct);
+  set('uPow', uPow);
+  set('lAct', lAct);
+  set('lPow', lPow);
   document.getElementById('facRaw').textContent = JSON.stringify(data, null, 2);
+
+  // ── 追加歷史記錄（節流：每秒最多 1 筆）──
+  var now_ms = Date.now();
+  if (now_ms - lastFacRecordTime >= 1000) {
+    lastFacRecordTime = now_ms;
+    var timeStr = getTimestamp();
+    var rec = { time: timeStr, eyeAct: eyeAct, uAct: uAct, uPow: uPow, lAct: lAct, lPow: lPow };
+    facHistory.push(rec);
+
+    var tbody = document.getElementById('facTableBody');
+    if (tbody) {
+      var empty = tbody.querySelector('.fac-table-empty');
+      if (empty) empty.remove();
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + timeStr + '</td>'
+        + '<td>' + eyeAct + '</td>'
+        + '<td>' + uAct + '</td>'
+        + '<td style="color:#a78bfa">' + uPow + '</td>'
+        + '<td>' + lAct + '</td>'
+        + '<td style="color:#a78bfa">' + lPow + '</td>';
+      tbody.prepend(tr);
+      while (tbody.rows.length > 200) tbody.deleteRow(tbody.rows.length - 1);
+    }
+    var countEl = document.getElementById('facTableCount');
+    if (countEl) countEl.textContent = facHistory.length + ' 筆';
+  }
 }
 
 function updateSys(data) {
@@ -651,6 +786,186 @@ function updateSys(data) {
   log.prepend(li);
   if (log.children.length > 50) log.lastElementChild.remove();
   document.getElementById('sysRaw').textContent = JSON.stringify(data, null, 2);
+  // 追加完整歷史記錄（無上限）
+  sysHistory.push({ time, msg, tag: 'INFO' });
+}
+
+// ─────────────────────────────────────────
+// CSV EXPORT
+// ─────────────────────────────────────────
+function downloadCSV(filename, rows) {
+  // 非同步構建 CSV，避免大量資料時卡住 UI
+  setTimeout(() => {
+    const bom = '\uFEFF'; // UTF-8 BOM for Excel compatibility
+    const csvContent = bom + rows.map(r =>
+      r.map(cell => {
+        const s = String(cell ?? '');
+        return s.includes(',') || s.includes('"') || s.includes('\n')
+          ? '"' + s.replace(/"/g, '""') + '"'
+          : s;
+      }).join(',')
+    ).join('\r\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+    // 優先使用 showSaveFilePicker（Chrome/Edge 支援，不受 COOP/COEP 影響）
+    if (window.showSaveFilePicker) {
+      window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'CSV 檔案', accept: { 'text/csv': ['.csv'] } }]
+      }).then(fileHandle => fileHandle.createWritable())
+        .then(writable => writable.write(blob).then(() => writable.close()))
+        .catch(err => {
+          if (err.name !== 'AbortError') {
+            console.warn('showSaveFilePicker failed, fallback to Blob URL:', err);
+            blobURLDownload(blob, filename);
+          }
+        });
+    } else {
+      blobURLDownload(blob, filename);
+    }
+  }, 0);
+}
+
+function blobURLDownload(blob, filename) {
+  try {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 1000);
+  } catch (e) {
+    console.error('CSV download failed:', e);
+    alert('CSV 下載失敗，請嘗試重新整理頁面後再試。\n錯誤：' + e.message);
+  }
+}
+
+// 產生「2026/3/2 下午2:08:00」格式的繁中时間字串
+function getTimestamp() {
+  return new Date().toLocaleString('zh-TW', {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+}
+
+function exportCSV(tab) {
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  let rows = [];
+  const getText = id => { const el = document.getElementById(id); return el ? el.textContent.trim() : ''; };
+  const now = getTimestamp(); // 匯出當下的電腦時間
+
+  switch (tab) {
+    case 'eeg': {
+      // Export the latest N samples from eegBuffer for each channel
+      rows.push(['電腦時間', 'Sample', ...EEG_CHANNELS]);
+      const len = eegBuffer[0].length;
+      for (let i = 0; i < len; i++) {
+        rows.push([now, i + 1, ...EEG_CHANNELS.map((_, ci) => eegBuffer[ci][i]?.toFixed(3) ?? '')]);
+      }
+      break;
+    }
+    case 'mot': {
+      rows.push(['記錄時間', 'Q0', 'Q1', 'Q2', 'Q3', 'AccX', 'AccY', 'AccZ', 'MagX', 'MagY', 'MagZ']);
+      if (motHistory.length === 0) {
+        rows.push([now, '—', '—', '—', '—', '—', '—', '—', '—', '—', '—']);
+      } else {
+        motHistory.forEach(d => {
+          rows.push([d.time,
+          d.q0.toFixed(4), d.q1.toFixed(4), d.q2.toFixed(4), d.q3.toFixed(4),
+          d.accX.toFixed(4), d.accY.toFixed(4), d.accZ.toFixed(4),
+          d.magX.toFixed(4), d.magY.toFixed(4), d.magZ.toFixed(4)
+          ]);
+        });
+      }
+      break;
+    }
+    case 'dev': {
+      const devCols = ['記錄時間', 'Signal Quality', 'Battery %', ...CQ_CHANNELS];
+      rows.push(devCols);
+      if (devHistory.length === 0) {
+        rows.push([now, '—', '—', ...CQ_CHANNELS.map(() => '—')]);
+      } else {
+        devHistory.forEach(d => {
+          rows.push([d.time, d.signal, d.batteryPercent, ...CQ_CHANNELS.map(ch => d[ch])]);
+        });
+      }
+      break;
+    }
+    case 'met': {
+      rows.push(['記錄時間', '投入度', '興奮度', '長期興奮', '壓力', '放鬆度', '興趣度', '專注度']);
+      if (metHistory.length === 0) {
+        rows.push([now, '—', '—', '—', '—', '—', '—', '—']);
+      } else {
+        metHistory.forEach(d => {
+          rows.push([d.time, d.eng, d.exc, d.lex, d.str, d.rel, d.int, d.foc]);
+        });
+      }
+      break;
+    }
+    case 'pow': {
+      // 匯出歷史表格中累積的全部 Theta/Alpha/Beta/Gamma/θα 記錄
+      rows.push(['記錄時間', 'Theta', 'Alpha', 'Beta', 'Gamma', 'θ/α']);
+      if (powTableData.length === 0) {
+        rows.push([now, '—', '—', '—', '—', '—']);
+      } else {
+        powTableData.forEach(function (d) {
+          var ta = d.thetaAlpha !== null && d.thetaAlpha !== undefined
+            ? d.thetaAlpha.toFixed(4) : '∞';
+          rows.push([d.time, d.theta.toFixed(4), d.alpha.toFixed(4), d.beta.toFixed(4), d.gamma.toFixed(4), ta]);
+        });
+      }
+      break;
+    }
+    case 'com': {
+      rows.push(['記錄時間', 'Action', 'Power']);
+      if (comHistory.length === 0) {
+        rows.push([now, '—', '—']);
+      } else {
+        // comHistory 是由新到舊，反轉後輸出由舊到新
+        [...comHistory].reverse().forEach(h => {
+          rows.push([h.time, h.action, (h.power * 100).toFixed(1) + '%']);
+        });
+      }
+      break;
+    }
+    case 'fac': {
+      rows.push(['記錄時間', 'Eye Action', 'Upper Action', 'Upper Power', 'Lower Action', 'Lower Power']);
+      if (facHistory.length === 0) {
+        rows.push([now, '—', '—', '—', '—', '—']);
+      } else {
+        facHistory.forEach(d => {
+          rows.push([d.time, d.eyeAct, d.uAct, d.uPow, d.lAct, d.lPow]);
+        });
+      }
+      break;
+    }
+    case 'sys': {
+      rows.push(['記錄時間', 'Message', 'Tag']);
+      if (sysHistory.length === 0) {
+        rows.push([now, '尚無系統事件', '']);
+      } else {
+        sysHistory.forEach(d => {
+          rows.push([d.time, d.msg, d.tag]);
+        });
+      }
+      break;
+    }
+    default:
+      return;
+  }
+
+  downloadCSV(`neurorest-${tab}-${ts}.csv`, rows);
 }
 
 // ─────────────────────────────────────────
@@ -753,4 +1068,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initial com state
   updateCom({ action: 'neutral', power: 0, time: Date.now() / 1000 });
   updateFac({ eyeAct: 'neutral', uAct: 'neutral', uPow: 0, lAct: 'neutral', lPow: 0, time: Date.now() / 1000 });
+
+  // ── 即時時鐘：每秒更新所有分頁按鈕下方的電腦時間 ──
+  const CLOCK_IDS = ['eeg', 'mot', 'dev', 'met', 'pow', 'com', 'fac', 'sys'];
+  function tickClocks() {
+    const t = getTimestamp();
+    CLOCK_IDS.forEach(id => {
+      const el = document.getElementById('clock-' + id);
+      if (el) el.textContent = t;
+    });
+  }
+  tickClocks(); // 立即顯示，不等第一秒
+  setInterval(tickClocks, 1000);
 });
