@@ -1181,14 +1181,28 @@ body {
   color: var(--accent2);
 }
 
-/* ─────────────── SYSTEM ─────────────── */
+/* ─────────────── SYSTEM LOGS ─────────────── */
+.system-logs-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.log-section-title {
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
 .sys-log-wrap {
+  height: 320px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
-  margin-bottom: 24px;
-  max-height: 420px;
   overflow-y: auto;
 }
 
@@ -1452,6 +1466,10 @@ body {
 
   .brand-name {
     font-size: 1rem;
+  }
+
+  .system-logs-container {
+    grid-template-columns: 1fr;
   }
 }
 

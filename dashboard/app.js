@@ -21,6 +21,57 @@ const EYE_ACTIONS = ['neutral', 'blink', 'winkL', 'winkR', 'horiEye', 'lookUp', 
 const UPPER_ACTIONS = ['neutral', 'surprise', 'frown', 'clench'];
 const LOWER_ACTIONS = ['neutral', 'smile', 'clench', 'smirkLeft', 'smirkRight'];
 
+// ── Web Console Interception ──
+const origConsoleLog = console.log;
+const origConsoleWarn = console.warn;
+const origConsoleError = console.error;
+
+function appendWebConsoleLog(level, args) {
+  const logEl = document.getElementById('webConsoleLog');
+  if (!logEl) return;
+  const empty = logEl.querySelector('.sys-log-empty');
+  if (empty) empty.remove();
+
+  const msg = Array.from(args).map(a => {
+    if (a instanceof Error) return a.toString() + (a.stack ? '\n' + a.stack : '');
+    return typeof a === 'object' ? JSON.stringify(a) : String(a);
+  }).join(' ');
+  const time = new Date().toLocaleTimeString();
+
+  const li = document.createElement('li');
+  let tagClass = 'info';
+  if (level === 'WARN') tagClass = 'warn';
+  else if (level === 'ERROR') tagClass = 'error';
+
+  li.innerHTML = `
+    <span class="sys-time">${time}</span>
+    <span class="sys-msg">${msg}</span>
+    <span class="sys-tag ${tagClass}">${level}</span>
+  `;
+  logEl.prepend(li);
+  if (logEl.children.length > 100) logEl.lastElementChild.remove();
+}
+
+window.addEventListener('error', function (e) {
+  appendWebConsoleLog('ERROR', [e.message, 'at', e.filename + ':' + e.lineno]);
+});
+window.addEventListener('unhandledrejection', function (e) {
+  appendWebConsoleLog('ERROR', ['Unhandled Promise Rejection:', e.reason]);
+});
+
+console.log = function (...args) {
+  origConsoleLog.apply(console, args);
+  appendWebConsoleLog('INFO', args);
+};
+console.warn = function (...args) {
+  origConsoleWarn.apply(console, args);
+  appendWebConsoleLog('WARN', args);
+};
+console.error = function (...args) {
+  origConsoleError.apply(console, args);
+  appendWebConsoleLog('ERROR', args);
+};
+
 // ── EEG ring buffer for waveform ──
 const EEG_HISTORY = 200;
 let eegBuffer = EEG_CHANNELS.map(() => new Array(EEG_HISTORY).fill(4096));
