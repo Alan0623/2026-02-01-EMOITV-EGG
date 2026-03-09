@@ -27,8 +27,15 @@ let eegBuffer = EEG_CHANNELS.map(() => new Array(EEG_HISTORY).fill(4096));
 
 // ── Band-average ring buffer (theta / alpha / beta / gamma) ──
 const POW_HISTORY = 150;
-const POW_BAND_COLORS = { theta: '#7c3aed', alpha: '#06b6d4', beta: '#10b981', gamma: '#ef4444' };
-let powAvgBuffer = { theta: new Array(POW_HISTORY).fill(0), alpha: new Array(POW_HISTORY).fill(0), beta: new Array(POW_HISTORY).fill(0), gamma: new Array(POW_HISTORY).fill(0) };
+const POW_BAND_COLORS = { theta: '#a855f7', alpha: '#06b6d4', beta: '#10b981', gamma: '#ef4444', thetaAlpha: '#f59e0b' };
+let powAvgBuffer = { theta: new Array(POW_HISTORY).fill(0), alpha: new Array(POW_HISTORY).fill(0), beta: new Array(POW_HISTORY).fill(0), gamma: new Array(POW_HISTORY).fill(0), thetaAlpha: new Array(POW_HISTORY).fill(0) };
+let powBandVisible = { theta: true, alpha: true, beta: true, gamma: true, thetaAlpha: true };
+
+window.togglePowBand = function (bandStr, el) {
+  powBandVisible[bandStr] = !powBandVisible[bandStr];
+  el.style.opacity = powBandVisible[bandStr] ? '1' : '0.4';
+  drawPowAvgCanvas();
+};
 
 // ── Band Power history table data (for CSV export) ──
 let powTableData = [];  // [{time, theta, alpha, beta, gamma}, ...]
@@ -632,6 +639,7 @@ function updatePow(data) {
   push('alpha', avgAlpha);
   push('beta', avgBeta);
   push('gamma', avgGamma);
+  push('thetaAlpha', avgAlpha > 0 ? avgTheta / avgAlpha : 0);
 
   drawPowAvgCanvas();
 
@@ -652,7 +660,7 @@ function updatePow(data) {
       var tr = document.createElement('tr');
       var taStr = thetaAlpha !== null ? thetaAlpha.toFixed(3) : '∞';
       tr.innerHTML = '<td>' + timeStr + '</td>'
-        + '<td style="color:#7c3aed">' + avgTheta.toFixed(3) + '</td>'
+        + '<td style="color:#a855f7">' + avgTheta.toFixed(3) + '</td>'
         + '<td style="color:#06b6d4">' + avgAlpha.toFixed(3) + '</td>'
         + '<td style="color:#10b981">' + avgBeta.toFixed(3) + '</td>'
         + '<td style="color:#ef4444">' + avgGamma.toFixed(3) + '</td>'
@@ -683,13 +691,21 @@ function drawPowAvgCanvas() {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
   }
 
-  const bands = ['theta', 'alpha', 'beta', 'gamma'];
+  const bands = ['theta', 'alpha', 'beta', 'gamma', 'thetaAlpha'];
+  let visibleVals = [];
   bands.forEach(band => {
+    if (powBandVisible[band]) {
+      visibleVals.push(...powAvgBuffer[band]);
+    }
+  });
+
+  const globalMax = Math.max(...visibleVals) || 1;
+  const globalMin = Math.min(...visibleVals);
+  const range = globalMax - globalMin || 1;
+
+  bands.forEach(band => {
+    if (!powBandVisible[band]) return;
     const buf = powAvgBuffer[band];
-    const allVals = Object.values(powAvgBuffer).flat();
-    const globalMax = Math.max(...allVals) || 1;
-    const globalMin = Math.min(...allVals);
-    const range = globalMax - globalMin || 1;
 
     ctx.beginPath();
     ctx.strokeStyle = POW_BAND_COLORS[band];

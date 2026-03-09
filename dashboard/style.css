@@ -771,6 +771,42 @@ body {
   color: #f59e0b;
 }
 
+.pav-theta {
+  border-color: rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.08);
+}
+
+.pav-theta .pav-val {
+  color: #a855f7;
+}
+
+.pav-alpha {
+  border-color: rgba(6, 182, 212, 0.4);
+  background: rgba(6, 182, 212, 0.08);
+}
+
+.pav-alpha .pav-val {
+  color: #06b6d4;
+}
+
+.pav-beta {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.pav-beta .pav-val {
+  color: #10b981;
+}
+
+.pav-gamma {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.pav-gamma .pav-val {
+  color: #ef4444;
+}
+
 .pow-avg-chart-wrap {
   height: 220px;
   position: relative;
