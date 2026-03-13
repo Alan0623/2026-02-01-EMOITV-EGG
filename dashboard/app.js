@@ -91,6 +91,7 @@ window.togglePowBand = function (bandStr, el) {
 // ── Band Power history table data (for CSV export) ──
 let powTableData = [];  // [{time, theta, alpha, beta, gamma}, ...]
 let lastPowRecordTime = 0; // 節流：每秒最多記錄 1 筆到 powTableData
+let latestPowData = { theta: 0, alpha: 0, beta: 0, gamma: 0, thetaAlpha: 0, valid: false };
 
 // ── State ──
 let demoMode = false;
@@ -107,6 +108,11 @@ let lastMetRecordTime = 0;  // 節流：每秒最多記錄 1 筆
 let facHistory = [];  // [{time, eyeAct, uAct, uPow, lAct, lPow}, ...]
 let lastFacRecordTime = 0;  // 節流：每秒最多記錄 1 筆
 let sysHistory = [];  // [{time, msg, tag}, ...]
+let bleHistory = [];  // [{time, hr, rr}, ...]
+let lastBleRecordTime = 0; // 節流：每秒最多記錄 1 筆
+let currentBleData = { hr: '—', rr: '—' };
+const BLE_CHART_HISTORY = 100;
+let bleChartBuffer = new Array(BLE_CHART_HISTORY).fill(null); // store raw HR values
 
 // ── Watchdog ──
 let lastPowTime = Date.now();
@@ -122,7 +128,7 @@ ALL_STREAMS.forEach((s, i) => SUB_ID_STREAM[100 + i] = s);
 const STREAM_PANEL = {
   eeg: 'panel-eeg', mot: 'panel-mot', dev: 'panel-dev',
   met: 'panel-met', pow: 'panel-pow', com: 'panel-com',
-  fac: 'panel-fac', sys: 'panel-sys'
+  fac: 'panel-mot', sys: 'panel-sys'
 };
 const subscribedStreams = new Set();
 
@@ -350,7 +356,7 @@ function handleCortexMessage(msg, clientId, clientSecret) {
     } else if (id === 1) { // queryHeadsets
       const headsets = msg.result;
       if (!headsets || headsets.length === 0) {
-        setStatus('', '找不到裝置，請確認頭戴裝置已開啟');
+        setStatus('', 'EEG未連線');
         // Retry after 3 seconds
         setTimeout(() => ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'queryHeadsets', params: {}, id: 1 })), 3000);
         return;
@@ -533,7 +539,7 @@ function updateMot(data) {
   set('accX', m[6]); set('accY', m[7]); set('accZ', m[8]);
   set('magX', m[9]); set('magY', m[10]); set('magZ', m[11]);
   document.getElementById('motRaw').textContent = JSON.stringify(data, null, 2);
-  // 追加歷史記錄
+  // 追加歷史記錄（與 facial 共用 time 同步，在 updateFac 裡也會觸發更新 unified 表格）
   motHistory.push({
     time: getTimestamp(),
     q0: m[2], q1: m[3], q2: m[4], q3: m[5],
@@ -681,8 +687,19 @@ function updatePow(data) {
   setAvg('avgBeta', avgBeta);
   setAvg('avgGamma', avgGamma);
   // θ/α ratio
+  const taVal = avgAlpha > 0 ? avgTheta / avgAlpha : 0;
   const thetaAlphaEl = document.getElementById('avgThetaAlpha');
-  if (thetaAlphaEl) thetaAlphaEl.textContent = avgAlpha > 0 ? (avgTheta / avgAlpha).toFixed(3) : '∞';
+  if (thetaAlphaEl) thetaAlphaEl.textContent = avgAlpha > 0 ? taVal.toFixed(3) : '∞';
+
+  // Update latestPowData for history recording
+  latestPowData = {
+    theta: avgTheta,
+    alpha: avgAlpha,
+    beta: avgBeta,
+    gamma: avgGamma,
+    thetaAlpha: avgAlpha > 0 ? taVal : null,
+    valid: true
+  };
 
   // Push to ring buffers
   const push = (key, v) => { powAvgBuffer[key].push(v); if (powAvgBuffer[key].length > POW_HISTORY) powAvgBuffer[key].shift(); };
@@ -693,44 +710,17 @@ function updatePow(data) {
   push('thetaAlpha', avgAlpha > 0 ? avgTheta / avgAlpha : 0);
 
   drawPowAvgCanvas();
-
-  // ── 追加到歷史表格（節流：每秒最多 1 筆，避免資料爆炸）──
-  var now_ms = Date.now();
-  if (now_ms - lastPowRecordTime >= 1000) {
-    lastPowRecordTime = now_ms;
-    var timeStr = getTimestamp();
-    var thetaAlpha = avgAlpha > 0 ? avgTheta / avgAlpha : null;
-    var row = { time: timeStr, theta: avgTheta, alpha: avgAlpha, beta: avgBeta, gamma: avgGamma, thetaAlpha: thetaAlpha };
-    powTableData.push(row);
-
-    var tbody = document.getElementById('powTableBody');
-    if (tbody) {
-      var empty = tbody.querySelector('.pow-table-empty');
-      if (empty) empty.remove();
-      // DOM 中只保留最近 200 列，避免 DOM 過重
-      var tr = document.createElement('tr');
-      var taStr = thetaAlpha !== null ? thetaAlpha.toFixed(3) : '∞';
-      tr.innerHTML = '<td>' + timeStr + '</td>'
-        + '<td style="color:#a855f7">' + avgTheta.toFixed(3) + '</td>'
-        + '<td style="color:#06b6d4">' + avgAlpha.toFixed(3) + '</td>'
-        + '<td style="color:#10b981">' + avgBeta.toFixed(3) + '</td>'
-        + '<td style="color:#ef4444">' + avgGamma.toFixed(3) + '</td>'
-        + '<td style="color:#f59e0b">' + taStr + '</td>';
-      tbody.prepend(tr);
-      while (tbody.rows.length > 200) tbody.deleteRow(tbody.rows.length - 1);
-    }
-    // 更新計數（顯示完整歷史筆數，非 DOM 截斷後數量）
-    var countEl = document.getElementById('powTableCount');
-    if (countEl) countEl.textContent = powTableData.length + ' 筆';
-  }
 }
 
 function drawPowAvgCanvas() {
   const canvas = document.getElementById('powAvgCanvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  const W = canvas.offsetWidth || canvas.parentElement.offsetWidth;
-  const H = canvas.offsetHeight || 220;
+  
+  let W = canvas.parentElement.offsetWidth;
+  if (W < 1300) W = 1300;
+  
+  const H = canvas.parentElement.offsetHeight || 220;
   canvas.width = W; canvas.height = H;
   ctx.clearRect(0, 0, W, H);
 
@@ -818,6 +808,27 @@ function updateFac(data) {
     var rec = { time: timeStr, eyeAct: eyeAct, uAct: uAct, uPow: uPow, lAct: lAct, lPow: lPow };
     facHistory.push(rec);
 
+    // 取得最近的一筆 Motion 資料
+    var motRec = motHistory.length > 0 ? motHistory[motHistory.length - 1] : null;
+    var motCols = '';
+    if (motRec && Math.abs(Date.parse(motRec.time) - Date.parse(timeStr)) < 2000) {
+        // 資料夠新鮮
+        var quatStr = `${motRec.q0.toFixed(2)}, ${motRec.q1.toFixed(2)}, ${motRec.q2.toFixed(2)}, ${motRec.q3.toFixed(2)}`;
+        var accStr = `${motRec.accX.toFixed(2)}, ${motRec.accY.toFixed(2)}, ${motRec.accZ.toFixed(2)}`;
+        var magStr = `${motRec.magX.toFixed(2)}, ${motRec.magY.toFixed(2)}, ${motRec.magZ.toFixed(2)}`;
+        motCols = `
+          <td style="color:#06b6d4">${quatStr}</td>
+          <td style="color:#10b981">${accStr}</td>
+          <td style="color:#f59e0b">${magStr}</td>
+        `;
+    } else {
+        motCols = `
+          <td style="color:#06b6d4">—</td>
+          <td style="color:#10b981">—</td>
+          <td style="color:#f59e0b">—</td>
+        `;
+    }
+
     var tbody = document.getElementById('facTableBody');
     if (tbody) {
       var empty = tbody.querySelector('.fac-table-empty');
@@ -828,7 +839,8 @@ function updateFac(data) {
         + '<td>' + uAct + '</td>'
         + '<td style="color:#a78bfa">' + uPow + '</td>'
         + '<td>' + lAct + '</td>'
-        + '<td style="color:#a78bfa">' + lPow + '</td>';
+        + '<td style="color:#a78bfa">' + lPow + '</td>'
+        + motCols;
       tbody.prepend(tr);
       while (tbody.rows.length > 200) tbody.deleteRow(tbody.rows.length - 1);
     }
@@ -943,16 +955,44 @@ function exportCSV(tab) {
       break;
     }
     case 'mot': {
-      rows.push(['記錄時間', 'Q0', 'Q1', 'Q2', 'Q3', 'AccX', 'AccY', 'AccZ', 'MagX', 'MagY', 'MagZ']);
-      if (motHistory.length === 0) {
-        rows.push([now, '—', '—', '—', '—', '—', '—', '—', '—', '—', '—']);
+      // 合併 Motion 與 Facial Data
+      rows.push(['記錄時間', 'Q0', 'Q1', 'Q2', 'Q3', 'AccX', 'AccY', 'AccZ', 'MagX', 'MagY', 'MagZ', 'Eye Action', 'Upper Action', 'Upper Power', 'Lower Action', 'Lower Power']);
+      
+      const combined = {};
+      const uniqueTimes = new Set();
+      
+      motHistory.forEach(d => {
+        if (!combined[d.time]) combined[d.time] = {};
+        combined[d.time].mot = d;
+        uniqueTimes.add(d.time);
+      });
+      
+      facHistory.forEach(d => {
+        if (!combined[d.time]) combined[d.time] = {};
+        combined[d.time].fac = d;
+        uniqueTimes.add(d.time);
+      });
+      
+      const sortedTimes = Array.from(uniqueTimes).sort((a,b) => Date.parse(a) - Date.parse(b));
+
+      if (sortedTimes.length === 0) {
+        rows.push([now, '—', '—', '—', '—', '—', '—', '—', '—', '—', '—', '—', '—', '—', '—', '—']);
       } else {
-        motHistory.forEach(d => {
-          rows.push([d.time,
-          d.q0.toFixed(4), d.q1.toFixed(4), d.q2.toFixed(4), d.q3.toFixed(4),
-          d.accX.toFixed(4), d.accY.toFixed(4), d.accZ.toFixed(4),
-          d.magX.toFixed(4), d.magY.toFixed(4), d.magZ.toFixed(4)
-          ]);
+        sortedTimes.forEach(t => {
+          const m = combined[t]?.mot;
+          const f = combined[t]?.fac;
+          
+          let mCols = m ? [
+            m.q0.toFixed(4), m.q1.toFixed(4), m.q2.toFixed(4), m.q3.toFixed(4),
+            m.accX.toFixed(4), m.accY.toFixed(4), m.accZ.toFixed(4),
+            m.magX.toFixed(4), m.magY.toFixed(4), m.magZ.toFixed(4)
+          ] : Array(10).fill('—');
+
+          let fCols = f ? [
+            f.eyeAct, f.uAct, f.uPow, f.lAct, f.lPow
+          ] : Array(5).fill('—');
+
+          rows.push([t, ...mCols, ...fCols]);
         });
       }
       break;
@@ -981,15 +1021,47 @@ function exportCSV(tab) {
       break;
     }
     case 'pow': {
-      // 匯出歷史表格中累積的全部 Theta/Alpha/Beta/Gamma/θα 記錄
-      rows.push(['記錄時間', 'Theta', 'Alpha', 'Beta', 'Gamma', 'θ/α']);
-      if (powTableData.length === 0) {
-        rows.push([now, '—', '—', '—', '—', '—']);
+      rows.push(['記錄時間', 'Theta', 'Alpha', 'Beta', 'Gamma', 'θ/α', '即時心率 (BPM)', '心跳間期 (ms)', '血氧濃度 SpO2 (%)', '呼吸速率 (次/分)']);
+
+      const combined = {};
+      const uniqueTimes = [];
+
+      powTableData.forEach(d => {
+        if (!combined[d.time]) {
+          combined[d.time] = {};
+          uniqueTimes.push(d.time);
+        }
+        combined[d.time].pow = d;
+      });
+
+      bleHistory.forEach(d => {
+        if (!combined[d.time]) {
+          combined[d.time] = {};
+          uniqueTimes.push(d.time);
+        }
+        combined[d.time].ble = d;
+      });
+
+      if (uniqueTimes.length === 0) {
+        rows.push([now, '—', '—', '—', '—', '—', '—', '—', '—', '—']);
       } else {
-        powTableData.forEach(function (d) {
-          var ta = d.thetaAlpha !== null && d.thetaAlpha !== undefined
-            ? d.thetaAlpha.toFixed(4) : '∞';
-          rows.push([d.time, d.theta.toFixed(4), d.alpha.toFixed(4), d.beta.toFixed(4), d.gamma.toFixed(4), ta]);
+        // 反轉陣列，讓最新時間的排在最前面
+        [...uniqueTimes].reverse().forEach(t => {
+          const p = combined[t].pow;
+          const b = combined[t].ble;
+
+          let th = p ? p.theta.toFixed(3) : '—';
+          let al = p ? p.alpha.toFixed(3) : '—';
+          let be = p ? p.beta.toFixed(3) : '—';
+          let ga = p ? p.gamma.toFixed(3) : '—';
+          let ta = p ? (p.thetaAlpha !== null && p.thetaAlpha !== undefined ? p.thetaAlpha.toFixed(3) : '∞') : '—';
+
+          let hr = b ? b.hr : '—';
+          let rr = b ? b.rr : '—';
+          let spo2 = b && b.spo2 !== undefined ? b.spo2 : '—';
+          let rsp = b && b.rsp !== undefined ? b.rsp : '—';
+
+          rows.push([t, th, al, be, ga, ta, hr, rr, spo2, rsp]);
         });
       }
       break;
@@ -1124,6 +1196,36 @@ function startDemo() {
       updateSys(['Training event', pick(['MC_Succeeded', 'MC_Failed', 'MC_Completed', 'FE_Succeeded'])]);
     }
 
+    // DEMO 藍牙心跳 (更新頻率 1Hz)
+    if (Math.random() < 0.1) {
+      const hrEl = document.getElementById('hrValue');
+      const rrEl = document.getElementById('rrValue');
+      const batEl = document.getElementById('bleBatPct');
+      const contactEl = document.getElementById('bleContactStatus');
+
+      if (hrEl) hrEl.textContent = Math.floor(rand(60, 95)) + ' BPM';
+      if (rrEl) {
+        // 隨機產生 1~2 個 RR interval
+        let rrs = [];
+        let count = Math.random() > 0.5 ? 2 : 1;
+        for (let i = 0; i < count; i++) rrs.push(Math.floor(rand(600, 1000)));
+        rrEl.textContent = rrs.join(', ') + ' ms';
+      }
+      if (batEl) batEl.textContent = '100% (Demo)';
+      if (contactEl) {
+        contactEl.textContent = '已接觸';
+        contactEl.style.color = '#10b981';
+      }
+
+      // DEMO ESP32 健康數據
+      const espHrEl = document.getElementById('espHrValue');
+      const espSpo2El = document.getElementById('espSpo2Value');
+      const espRspEl = document.getElementById('espRspValue');
+      if (espHrEl) espHrEl.textContent = Math.floor(rand(60, 95)) + ' BPM';
+      if (espSpo2El) espSpo2El.textContent = Math.floor(rand(95, 100)) + ' %';
+      if (espRspEl) espRspEl.textContent = Math.floor(rand(12, 20)) + ' 次/分';
+    }
+
   }, 100); // 10 Hz
 }
 
@@ -1137,14 +1239,397 @@ document.addEventListener('DOMContentLoaded', () => {
   updateFac({ eyeAct: 'neutral', uAct: 'neutral', uPow: 0, lAct: 'neutral', lPow: 0, time: Date.now() / 1000 });
 
   // ── 即時時鐘：每秒更新所有分頁按鈕下方的電腦時間 ──
-  const CLOCK_IDS = ['eeg', 'mot', 'dev', 'met', 'pow', 'com', 'fac', 'sys'];
+  const CLOCK_IDS = ['eeg', 'mot', 'dev', 'met', 'pow', 'com', 'sys'];
   function tickClocks() {
     const t = getTimestamp();
     CLOCK_IDS.forEach(id => {
       const el = document.getElementById('clock-' + id);
       if (el) el.textContent = t;
     });
+
+    // ── 每秒記錄一筆 BLE 心跳狀態到歷史紀錄並更新綜合表格 ──
+    const hrEl = document.getElementById('hrValue');
+    const rrEl = document.getElementById('rrValue');
+      let hrValStr = '—', rrValStr = '—';
+
+      // 取得 ESP32 數據
+      const espSpo2El = document.getElementById('espSpo2Value');
+      const espRspEl = document.getElementById('espRspValue');
+      let espSpo2Str = espSpo2El ? espSpo2El.textContent.trim() : '—';
+      let espRspStr = espRspEl ? espRspEl.textContent.trim() : '—';
+      if (espSpo2Str === '— %') espSpo2Str = '—';
+      if (espRspStr === '— 次/分') espRspStr = '—';
+
+      if (hrEl && hrEl.textContent !== '—' && hrEl.textContent !== '— BPM') {
+        const hrVal = parseFloat(hrEl.textContent.replace(' BPM', ''));
+        if (!isNaN(hrVal)) {
+          bleChartBuffer.push(hrVal);
+          if (bleChartBuffer.length > BLE_CHART_HISTORY) bleChartBuffer.shift();
+        }
+        hrValStr = hrVal;
+        rrValStr = rrEl ? rrEl.textContent.replace(' ms', '') : '—';
+      }
+
+      // 如果有取得 BLE 或 ESP32 資料，也記錄一份
+      if (hrValStr !== '—' || espSpo2Str !== '—' || espRspStr !== '—') {
+        const rec = {
+          time: t,
+          hr: hrValStr,
+          rr: rrValStr,
+          spo2: espSpo2Str,
+          rsp: espRspStr
+        };
+
+        bleHistory.push(rec);
+        drawBleChartCanvas();
+      }
+
+      // ── 記錄 Band Power 到歷史陣列 (與 BLE 時間對齊) ──
+      if (Date.now() - lastPowTime < 2000 && latestPowData.valid) {
+        powTableData.push({
+          time: t,
+          theta: latestPowData.theta,
+          alpha: latestPowData.alpha,
+          beta: latestPowData.beta,
+          gamma: latestPowData.gamma,
+          thetaAlpha: latestPowData.thetaAlpha
+        });
+      }
+
+      // 更新綜合歷史表格
+      const thEl = document.getElementById('avgTheta');
+      const alEl = document.getElementById('avgAlpha');
+      const beEl = document.getElementById('avgBeta');
+      const gaEl = document.getElementById('avgGamma');
+      const taEl = document.getElementById('avgThetaAlpha');
+
+      let th = thEl ? thEl.textContent : '—';
+      let al = alEl ? alEl.textContent : '—';
+      let be = beEl ? beEl.textContent : '—';
+      let ga = gaEl ? gaEl.textContent : '—';
+      let ta = taEl ? taEl.textContent : '—';
+
+      if (th !== '—' || hrValStr !== '—' || espSpo2Str !== '—') {
+        const tbody = document.getElementById('powTableBody');
+        if (tbody) {
+          const empty = tbody.querySelector('.pow-table-empty');
+          if (empty) empty.remove();
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${t}</td>
+            <td style="color:#a855f7">${th}</td>
+            <td style="color:#06b6d4">${al}</td>
+            <td style="color:#10b981">${be}</td>
+            <td style="color:#ef4444">${ga}</td>
+            <td style="color:#f59e0b">${ta}</td>
+            <td style="color:#ef4444">${hrValStr}</td>
+            <td style="color:#f59e0b">${rrValStr}</td>
+            <td style="color:#10b981">${espSpo2Str}</td>
+            <td style="color:#06b6d4">${espRspStr}</td>
+          `;
+        tbody.prepend(tr);
+        while (tbody.rows.length > 200) tbody.deleteRow(tbody.rows.length - 1);
+      }
+      const countEl = document.getElementById('powTableCount');
+      if (countEl) countEl.textContent = Math.max(powTableData.length, bleHistory.length) + ' 筆';
+    }
   }
   tickClocks(); // 立即顯示，不等第一秒
   setInterval(tickClocks, 1000);
+
+  // ── 建立繪製心率圖表的函式 ──
+  function drawBleChartCanvas() {
+    const canvas = document.getElementById('bleChartCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    
+    // 取得 parent container width, 至少確保大於 1300
+    let W = canvas.parentElement.offsetWidth;
+    if (W < 1300) W = 1300;
+    
+    const H = canvas.parentElement.offsetHeight || 250;
+    canvas.width = W;
+    canvas.height = H;
+    ctx.clearRect(0, 0, W, H);
+
+    // 取得有數值的資料點
+    const validData = bleChartBuffer.filter(v => v !== null);
+    if (validData.length === 0) return;
+
+    // 計算最大與最小值
+    let minVal = Math.min(...validData) - 5;
+    let maxVal = Math.max(...validData) + 5;
+    if (maxVal - minVal < 10) {
+      maxVal += 5;
+      minVal -= 5;
+    }
+    const range = maxVal - minVal;
+
+    // 畫網格與標籤
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.font = '11px Inter';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const STEPS = 5;
+    for (let i = 0; i <= STEPS; i++) {
+      const y = H - (i / STEPS) * (H - 20) - 10;
+      ctx.moveTo(35, y);
+      ctx.lineTo(W, y);
+      ctx.fillText(Math.round(minVal + (i / STEPS) * range), 5, y + 4);
+    }
+
+    // Y 軸線
+    ctx.moveTo(35, 10);
+    ctx.lineTo(35, H - 10);
+    ctx.stroke();
+
+    const startX = 35;
+    const chartW = W - startX - 10;
+    const chartH = H - 20;
+
+    // 繪製紫色的線條與點 (模擬附圖風格)
+    const lineColor = '#8b5cf6'; // 紫色
+
+    // 畫線
+    ctx.beginPath();
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+
+    let firstPoint = true;
+    for (let i = 0; i < bleChartBuffer.length; i++) {
+      const v = bleChartBuffer[i];
+      if (v === null) continue;
+
+      const px = startX + (i / (BLE_CHART_HISTORY - 1)) * chartW;
+      const py = 10 + chartH - ((v - minVal) / range) * chartH;
+
+      if (firstPoint) {
+        ctx.moveTo(px, py);
+        firstPoint = false;
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+    ctx.stroke();
+
+    // 畫點 (正方形或圓形)
+    ctx.fillStyle = lineColor;
+    for (let i = 0; i < bleChartBuffer.length; i++) {
+      const v = bleChartBuffer[i];
+      if (v === null) continue;
+
+      const px = startX + (i / (BLE_CHART_HISTORY - 1)) * chartW;
+      const py = 10 + chartH - ((v - minVal) / range) * chartH;
+
+      ctx.beginPath();
+      ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ── Heart Rate BLE Init ──
+  const bleBtn = document.getElementById('connectBleBtn');
+  if (bleBtn) bleBtn.addEventListener('click', connectBLE);
+
+  // ── ESP32 API Polling Init ──
+  startESP32Polling();
 });
+
+// ─────────────────────────────────────────
+// ESP32 DATA POLLING (via server /esp32 API)
+// ─────────────────────────────────────────
+function startESP32Polling() {
+  setInterval(async () => {
+    try {
+      const resp = await fetch('/esp32');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      
+      const dot = document.getElementById('espStatusDot');
+      const txt = document.getElementById('espStatusText');
+      
+      if (data.connected) {
+        if (dot) dot.style.background = '#10b981';
+        if (txt) txt.textContent = '已連線';
+        
+        if (data.heart_rate !== null) {
+          const el = document.getElementById('espHrValue');
+          if (el) el.textContent = data.heart_rate.toFixed(1) + ' BPM';
+        }
+        if (data.spo2 !== null) {
+          const el = document.getElementById('espSpo2Value');
+          if (el) el.textContent = data.spo2.toFixed(1) + ' %';
+        }
+        if (data.rsp_rate !== null) {
+          const el = document.getElementById('espRspValue');
+          if (el) el.textContent = data.rsp_rate.toFixed(1) + ' 次/分';
+        }
+      } else {
+        if (dot) dot.style.background = '#ef4444';
+        if (txt) txt.textContent = '未連線';
+      }
+    } catch (e) {
+      // server not reachable, ignore
+    }
+  }, 1000);
+}
+
+// 釋放佔用序列埠並重連
+async function releaseAndConnectESP32() {
+  const btn = document.getElementById('espReleaseBtn');
+  const txt = document.getElementById('espStatusText');
+  if (btn) { btn.textContent = '釋放中...'; btn.style.background = '#f59e0b'; }
+  if (txt) txt.textContent = '釋放佔用程序…';
+  
+  try {
+    const resp = await fetch('/esp32/release');
+    const result = await resp.json();
+    console.log('[ESP32 Release]', result);
+    
+    if (result.success) {
+      if (txt) txt.textContent = result.message + '，準備連線…';
+      if (btn) { btn.textContent = '✔ 已釋放並啟動'; btn.style.background = '#10b981'; }
+      setTimeout(() => {
+        if (btn) { btn.textContent = '▶ 釋放並啟動感測'; btn.style.background = '#7c3aed'; }
+      }, 5000);
+    } else {
+      if (txt) txt.textContent = result.message;
+      if (btn) { btn.textContent = '▶ 釋放並啟動感測'; btn.style.background = '#ef4444'; }
+    }
+  } catch (e) {
+    if (txt) txt.textContent = '釋放請求失敗（後端未回應）';
+    if (btn) { btn.textContent = '▶ 釋放並啟動感測'; btn.style.background = '#ef4444'; }
+  }
+}
+
+// ─────────────────────────────────────────
+// POLAR H9 BLE LOGIC (Web Bluetooth)
+// ─────────────────────────────────────────
+let bleDevice = null;
+let bleHeartRateCharacteristic = null;
+let bleBatteryCharacteristic = null;
+
+async function connectBLE() {
+  try {
+    const btn = document.getElementById('connectBleBtn');
+    btn.textContent = '連線中...';
+    btn.style.background = '#f59e0b';
+
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'Polar H9' }],
+      optionalServices: ['heart_rate', 'battery_service']
+    });
+
+    bleDevice.addEventListener('gattserverdisconnected', onBleDisconnected);
+
+    const server = await bleDevice.gatt.connect();
+
+    // Heart Rate Service
+    const hrService = await server.getPrimaryService('heart_rate');
+    bleHeartRateCharacteristic = await hrService.getCharacteristic('heart_rate_measurement');
+    await bleHeartRateCharacteristic.startNotifications();
+    bleHeartRateCharacteristic.addEventListener('characteristicvaluechanged', handleHeartRateMeasurement);
+
+    // Battery Service
+    try {
+      const batteryService = await server.getPrimaryService('battery_service');
+      bleBatteryCharacteristic = await batteryService.getCharacteristic('battery_level');
+      let batteryValue = await bleBatteryCharacteristic.readValue();
+      let batteryLevel = batteryValue.getUint8(0);
+      const batEl = document.getElementById('bleBatPct');
+      if (batEl) batEl.textContent = batteryLevel + '%';
+
+      try {
+        await bleBatteryCharacteristic.startNotifications();
+        bleBatteryCharacteristic.addEventListener('characteristicvaluechanged', handleBatteryLevel);
+      } catch (e) {
+        console.log("Battery notification not supported");
+      }
+    } catch (err) {
+      console.log('No Battery Service found.', err);
+    }
+
+    btn.textContent = '已連線';
+    btn.style.background = '#10b981';
+
+  } catch (error) {
+    console.error("BLE Connect failed", error);
+    const btn = document.getElementById('connectBleBtn');
+    if (btn) {
+      btn.textContent = '連線失敗';
+      btn.style.background = '#ef4444';
+      setTimeout(() => { btn.textContent = '連線裝置'; btn.style.background = '#ef4444'; }, 3000);
+    }
+  }
+}
+
+function onBleDisconnected() {
+  const btn = document.getElementById('connectBleBtn');
+  if (btn) {
+    btn.textContent = '連線裝置';
+    btn.style.background = '#ef4444';
+  }
+}
+
+function handleBatteryLevel(event) {
+  let batteryLevel = event.target.value.getUint8(0);
+  const el = document.getElementById('bleBatPct');
+  if (el) el.textContent = batteryLevel + '%';
+}
+
+function handleHeartRateMeasurement(event) {
+  let value = event.target.value;
+  let flags = value.getUint8(0);
+  let rate16Bits = flags & 0x1;
+  let hr = 0;
+  let index = 1;
+
+  if (rate16Bits) {
+    hr = value.getUint16(index, true);
+    index += 2;
+  } else {
+    hr = value.getUint8(index);
+    index += 1;
+  }
+
+  const hrEl = document.getElementById('hrValue');
+  if (hrEl) hrEl.textContent = hr + ' BPM';
+
+  let contactDetected = flags & 0x6;
+  let contactStatusText = '未知';
+  const contactEl = document.getElementById('bleContactStatus');
+
+  if (contactDetected === 0x4) {
+    contactStatusText = '未接觸';
+    if (contactEl) contactEl.style.color = '#ef4444';
+  } else if (contactDetected === 0x6) {
+    contactStatusText = '已接觸';
+    if (contactEl) contactEl.style.color = '#10b981';
+  } else {
+    contactStatusText = '不支援/未知';
+    if (contactEl) contactEl.style.color = 'var(--text-muted)';
+  }
+  if (contactEl) contactEl.textContent = contactStatusText;
+
+  let energyExpendedStatus = flags & 0x8;
+  if (energyExpendedStatus) {
+    index += 2;
+  }
+
+  let rrIntervalPresent = flags & 0x10;
+  if (rrIntervalPresent) {
+    let rrIntervals = [];
+    while (index + 1 < value.byteLength) {
+      let rrValue = value.getUint16(index, true);
+      let rrMs = Math.round((rrValue / 1024.0) * 1000);
+      rrIntervals.push(rrMs);
+      index += 2;
+    }
+    const rrEl = document.getElementById('rrValue');
+    if (rrEl && rrIntervals.length > 0) {
+      rrEl.textContent = rrIntervals.join(', ') + ' ms';
+    }
+  }
+}

@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>整合健康監測儀表板</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', 'Microsoft JhengHei', sans-serif;
+      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #1e3c72 100%);
+      min-height: 100vh;
+      padding: 20px;
+      color: white;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    header {
+      height: 80px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      padding: 0 30px;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      margin-bottom: 30px;
+      animation: fadeInDown 0.8s ease;
+    }
+
+    .header-left {
+      display: flex;
+      flex-direction: column;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin: 0;
+      background: linear-gradient(90deg, #fff, #a8d8ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      font-size: 0.8rem;
+      color: #b8d4f1;
+      margin: 0;
+    }
+
+    .header-center {
+      display: flex;
+      align-items: center;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 8px 16px;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      margin: 0;
+      /* Clean up prior styles */
+      backdrop-filter: none;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ef4444;
+      /* Default to red/stopped */
+      animation: pulse 2s infinite;
+    }
+
+    .header-right {
+      display: flex;
+      gap: 15px;
+    }
+
+    .btn {
+      padding: 8px 20px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 30px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-family: 'Inter', 'Microsoft JhengHei', sans-serif;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn-start {
+      background: linear-gradient(135deg, #4ade80, #22c55e);
+      color: white;
+    }
+
+    .btn-start:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(74, 222, 128, 0.4);
+    }
+
+    .btn-stop {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: white;
+    }
+
+    .btn-stop:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 25px;
+      margin-bottom: 30px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 25px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+      animation: fadeInUp 0.8s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .card-icon {
+      font-size: 2rem;
+    }
+
+    .card-title {
+      font-size: 1.3rem;
+      font-weight: 600;
+    }
+
+    .value-display {
+      text-align: center;
+      margin: 20px 0;
+    }
+
+    .value-number {
+      font-size: 4rem;
+      font-weight: 700;
+      line-height: 1;
+      background: linear-gradient(135deg, #fbbf24, #f59e0b);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: glow 2s ease-in-out infinite;
+    }
+
+    .value-unit {
+      font-size: 1.2rem;
+      color: #d1d5db;
+      margin-top: 5px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 15px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b);
+      border-radius: 10px;
+      transition: width 0.5s ease;
+      background-size: 200% 100%;
+      animation: shimmer 2s infinite;
+    }
+
+    .waveform-container {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      margin-top: 30px;
+      animation: fadeInUp 1s ease;
+    }
+
+    .waveform-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .waveform-title {
+      font-size: 1.2rem;
+      font-weight: 600;
+    }
+
+    .waveform-controls {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+    }
+
+    .slider-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .slider-label {
+      font-size: 0.85rem;
+      color: #d1d5db;
+    }
+
+    .slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100px;
+      height: 6px;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.2);
+      outline: none;
+      transition: opacity 0.2s;
+    }
+
+    .slider:hover {
+      opacity: 1;
+    }
+
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #4ade80;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(74, 222, 128, 0.5);
+    }
+
+    .slider::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #4ade80;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 2px 8px rgba(74, 222, 128, 0.5);
+    }
+
+    canvas {
+      width: 100%;
+      height: 300px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes fadeInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    @keyframes glow {
+
+      0%,
+      100% {
+        filter: brightness(1);
+      }
+
+      50% {
+        filter: brightness(1.2);
+      }
+    }
+
+    @keyframes shimmer {
+      0% {
+        background-position: 200% 0;
+      }
+
+      100% {
+        background-position: -200% 0;
+      }
+    }
+
+    .heart-beat {
+      animation: heartBeat 1s ease-in-out infinite;
+    }
+
+    @keyframes heartBeat {
+
+      0%,
+      100% {
+        transform: scale(1);
+      }
+
+      25% {
+        transform: scale(1.1);
+      }
+
+      50% {
+        transform: scale(1);
+      }
+    }
+
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 2rem;
+      }
+
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .value-number {
+        font-size: 3rem;
+      }
+
+      .control-panel {
+        flex-direction: column;
+      }
+
+      .btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <div class="header-left">
+        <h1>🏥 整合健康監測儀表板</h1>
+        <p class="subtitle">即時生理數據監測系統</p>
+      </div>
+
+      <div class="header-center">
+        <div class="status-indicator">
+          <div class="status-dot" id="statusDot"></div>
+          <span id="statusText">待機中</span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <button class="btn btn-start" onclick="startMonitoring()">▶ 開始</button>
+        <button class="btn btn-stop" onclick="stopMonitoring()">■ 停止</button>
+      </div>
+    </header>
+
+    <div class="dashboard-grid">
+      <!-- SpO2 Card -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-icon">🩸</span>
+          <span class="card-title">血氧濃度 (SpO2)</span>
+        </div>
+        <div class="value-display">
+          <div class="value-number" id="spo2Value">--</div>
+          <div class="value-unit">%</div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="spo2Progress" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Heart Rate Card -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-icon heart-beat" id="heartIcon">❤️</span>
+          <span class="card-title">心率 (HR)</span>
+        </div>
+        <div class="value-display">
+          <div class="value-number" id="hrValue">--</div>
+          <div class="value-unit">次/分</div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="hrProgress" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Respiratory Rate Card -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-icon" id="breathIcon">👃</span>
+          <span class="card-title">呼吸速率 (RSP)</span>
+        </div>
+        <div class="value-display">
+          <div class="value-number" id="rspValue">--</div>
+          <div class="value-unit">次/分</div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="rspProgress" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PPG Waveform -->
+    <div class="waveform-container">
+      <div class="waveform-header">
+        <span class="waveform-title">💓 心電圖波形 (PPG)</span>
+        <div class="waveform-controls">
+          <div class="slider-group">
+            <span class="slider-label">水平</span>
+            <input type="range" min="1" max="25" value="5" class="slider" id="ppgScrollX">
+          </div>
+          <div class="slider-group">
+            <span class="slider-label">垂直</span>
+            <input type="range" min="0" max="25" value="9" class="slider" id="ppgScrollY">
+          </div>
+        </div>
+      </div>
+      <canvas id="ppgCanvas" width="1200" height="300"></canvas>
+    </div>
+
+    <!-- Respiratory Waveform -->
+    <div class="waveform-container">
+      <div class="waveform-header">
+        <span class="waveform-title">🌬️ 呼吸波形</span>
+        <div class="waveform-controls">
+          <div class="slider-group">
+            <span class="slider-label">水平</span>
+            <input type="range" min="1" max="25" value="5" class="slider" id="rspScrollX">
+          </div>
+          <div class="slider-group">
+            <span class="slider-label">垂直</span>
+            <input type="range" min="0" max="25" value="9" class="slider" id="rspScrollY">
+          </div>
+        </div>
+      </div>
+      <canvas id="rspCanvas" width="1200" height="300"></canvas>
+    </div>
+  </div>
+
+  <script>
+    // Global state
+    let isMonitoring = false;
+    let ppgCanvas, ppgCtx, rspCanvas, rspCtx;
+
+    // PPG waveform variables
+    let ppgInitStep = 0;
+    let ppgLineX = 0;
+    let ppgLineY = 150;
+    let ppgRawLineY = 150;
+    let ppgOldLineY = 150;
+    let ppgMaxVal = 0;
+    let ppgMinVal = 99999;
+    let ppgMaxTmp = 0;
+    let ppgMinTmp = 99999;
+    let ppgScrollX = 5;
+    let ppgScrollY = 9;
+
+    // RSP waveform variables
+    let rspInitStep = 0;
+    let rspLineX = 0;
+    let rspLineY = 150;
+    let rspRawLineY = 150;
+    let rspOldLineY = 150;
+    let rspMaxVal = 0;
+    let rspMinVal = 99999;
+    let rspMaxTmp = 0;
+    let rspMinTmp = 99999;
+    let rspScrollX = 5;
+    let rspScrollY = 9;
+
+    // Initialize canvases
+    function initCanvases() {
+      ppgCanvas = document.getElementById('ppgCanvas');
+      ppgCtx = ppgCanvas.getContext('2d');
+      rspCanvas = document.getElementById('rspCanvas');
+      rspCtx = rspCanvas.getContext('2d');
+
+      // Clear canvases
+      ppgCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ppgCtx.fillRect(0, 0, ppgCanvas.width, ppgCanvas.height);
+      rspCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      rspCtx.fillRect(0, 0, rspCanvas.width, rspCanvas.height);
+    }
+
+    // Utility function to scale values
+    function scaler(val, inMin, inMax, outMin, outMax) {
+      return (val - inMin) / (inMax - inMin) * (outMax - outMin) + outMin;
+    }
+
+    // Start monitoring
+    function startMonitoring() {
+      isMonitoring = true;
+      document.getElementById('statusText').textContent = '監測中';
+      document.getElementById('statusDot').style.background = '#4ade80';
+    }
+
+    // Stop monitoring
+    function stopMonitoring() {
+      isMonitoring = false;
+      document.getElementById('statusText').textContent = '已停止';
+      document.getElementById('statusDot').style.background = '#ef4444';
+    }
+
+    // Fetch all data from server
+    // Fetch all data from server
+    function fetchAllData() {
+      if (!isMonitoring) return;
+
+      fetch('/all')
+        .then(response => response.json())
+        .then(data => {
+          // Update SpO2 - Only update if valid value received
+          if (data.spo2 !== undefined && data.spo2 > 0) {
+            document.getElementById('spo2Value').textContent = data.spo2;
+            document.getElementById('spo2Progress').style.width = data.spo2 + '%';
+          }
+          // If 0 or undefined, keep the last value displayed (no else block)
+
+          // Update Heart Rate - Only update if valid value received
+          if (data.heart_rate !== undefined && data.heart_rate > 0) {
+            document.getElementById('hrValue').textContent = data.heart_rate;
+            const hrPercent = Math.min((data.heart_rate / 200) * 100, 100);
+            document.getElementById('hrProgress').style.width = hrPercent + '%';
+          }
+
+          // Update Respiratory Rate - Only update if valid value received
+          if (data.rsp_rate !== undefined && data.rsp_rate > 0) {
+            document.getElementById('rspValue').textContent = data.rsp_rate;
+            const rspPercent = Math.min((data.rsp_rate / 30) * 100, 100);
+            document.getElementById('rspProgress').style.width = rspPercent + '%';
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching data:', error);
+        });
+    }
+
+    // Draw PPG waveform
+    function drawPPGWaveform() {
+      if (!isMonitoring) return;
+
+      fetch('/ppg')
+        .then(response => response.text())
+        .then(data => {
+          ppgRawLineY = parseInt(data);
+
+          if (ppgInitStep >= 20) {
+            if (ppgRawLineY > ppgMaxTmp) ppgMaxTmp = ppgRawLineY;
+            if (ppgRawLineY < ppgMinTmp) ppgMinTmp = ppgRawLineY;
+
+            ppgCtx.clearRect(ppgLineX, 0, 50, ppgCanvas.height);
+            ppgCtx.beginPath();
+            ppgCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ppgCtx.fillRect(ppgLineX, 0, 50, ppgCanvas.height);
+            ppgCtx.moveTo(ppgLineX, ppgOldLineY);
+
+            ppgScrollX = parseInt(document.getElementById('ppgScrollX').value);
+            ppgLineX += ppgScrollX;
+
+            ppgScrollY = parseInt(document.getElementById('ppgScrollY').value);
+            ppgLineY = scaler(ppgRawLineY, ppgMinVal, ppgMaxVal, 50, 100 + 16 * ppgScrollY);
+            ppgLineY = ppgCanvas.height - ppgLineY;
+
+            ppgCtx.lineTo(ppgLineX, ppgLineY);
+            ppgCtx.lineWidth = 2;
+            ppgCtx.strokeStyle = '#4ade80';
+            ppgCtx.stroke();
+
+            if (ppgLineX >= ppgCanvas.width) {
+              ppgLineX = 0;
+              ppgMaxVal = ppgMaxTmp;
+              ppgMinVal = ppgMinTmp;
+              ppgMinTmp = 99999;
+              ppgMaxTmp = 0;
+            }
+          } else {
+            ppgInitStep++;
+            if (ppgRawLineY > ppgMaxVal) ppgMaxVal = ppgRawLineY;
+            if (ppgRawLineY < ppgMinVal) ppgMinVal = ppgRawLineY;
+          }
+          ppgOldLineY = ppgLineY;
+        })
+        .catch(error => {
+          console.error('Error fetching PPG data:', error);
+        });
+    }
+
+    // Draw RSP waveform
+    function drawRSPWaveform() {
+      if (!isMonitoring) return;
+
+      fetch('/rsp')
+        .then(response => response.text())
+        .then(data => {
+          rspRawLineY = parseInt(data);
+
+          if (rspInitStep >= 20) {
+            if (rspRawLineY > rspMaxTmp) rspMaxTmp = rspRawLineY;
+            if (rspRawLineY < rspMinTmp) rspMinTmp = rspRawLineY;
+
+            rspCtx.clearRect(rspLineX, 0, 50, rspCanvas.height);
+            rspCtx.beginPath();
+            rspCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            rspCtx.fillRect(rspLineX, 0, 50, rspCanvas.height);
+            rspCtx.moveTo(rspLineX, rspOldLineY);
+
+            rspScrollX = parseInt(document.getElementById('rspScrollX').value);
+            rspLineX += rspScrollX;
+
+            rspScrollY = parseInt(document.getElementById('rspScrollY').value);
+            rspLineY = scaler(rspRawLineY, rspMinVal, rspMaxVal, 50, 100 + 16 * rspScrollY);
+            rspLineY = rspCanvas.height - rspLineY;
+
+            rspCtx.lineTo(rspLineX, rspLineY);
+            rspCtx.lineWidth = 2;
+            rspCtx.strokeStyle = '#60a5fa';
+            rspCtx.stroke();
+
+            if (rspLineX >= rspCanvas.width) {
+              rspLineX = 0;
+              rspMaxVal = rspMaxTmp;
+              rspMinVal = rspMinTmp;
+              rspMinTmp = 99999;
+              rspMaxTmp = 0;
+            }
+          } else {
+            rspInitStep++;
+            if (rspRawLineY > rspMaxVal) rspMaxVal = rspRawLineY;
+            if (rspRawLineY < rspMinVal) rspMinVal = rspRawLineY;
+          }
+          rspOldLineY = rspLineY;
+        })
+        .catch(error => {
+          console.error('Error fetching RSP data:', error);
+        });
+    }
+
+    // Heart beat animation
+    function animateHeartBeat() {
+      if (isMonitoring) {
+        document.getElementById('heartIcon').textContent = '💗';
+        setTimeout(() => {
+          if (isMonitoring) {
+            document.getElementById('heartIcon').textContent = '❤️';
+          }
+        }, 500);
+      }
+    }
+
+    // Breath animation
+    function animateBreath() {
+      if (isMonitoring) {
+        document.getElementById('breathIcon').textContent = '💨';
+        setTimeout(() => {
+          if (isMonitoring) {
+            document.getElementById('breathIcon').textContent = '👃';
+          }
+        }, 2000);
+      }
+    }
+
+    // Initialize on page load
+    window.addEventListener('load', () => {
+      initCanvases();
+
+      // Set up intervals
+      setInterval(fetchAllData, 1000);  // Update values every second
+      setInterval(drawPPGWaveform, 100);  // Draw PPG waveform every 100ms
+      setInterval(drawRSPWaveform, 100);  // Draw RSP waveform every 100ms
+      setInterval(animateHeartBeat, 1000);  // Heart beat animation
+      setInterval(animateBreath, 4000);  // Breath animation
+    });
+  </script>
+</body>
+
+</html>

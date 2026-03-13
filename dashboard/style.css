@@ -108,6 +108,7 @@ body {
 
 .headset-name {
   display: inline-flex;
+  display: none !important;
   align-items: center;
   gap: 4px;
   font-size: 0.9rem;
@@ -436,6 +437,8 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 16px;
   margin-bottom: 24px;
+  margin-top: 0 !important;
+  padding: 16px;
 }
 
 .motion-card {
@@ -810,18 +813,91 @@ body {
 .pow-avg-chart-wrap {
   height: 220px;
   position: relative;
+  width: 100%;
+  min-width: 1300px;
+  overflow-x: auto;
 }
 
-#powAvgCanvas {
-  width: 100%;
-  height: 100%;
+#powAvgCanvas, #bleChartCanvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.pow-grid,
+.pow-table-box,
+.motion-grid,
+.fac-grid,
+.eeg-grid,
+.com-center,
+.pow-avg-block {
+  transition: max-height 0.4s ease, margin 0.4s ease, opacity 0.4s ease, padding 0.4s ease;
+  overflow: hidden;
+  max-height: 2000px;
+  opacity: 1;
+}
+
+#metTableWrapper,
+#powTableWrapper {
+  margin-top: 0 !important;
+}
+
+.pow-grid.collapsed,
+.pow-table-box.collapsed,
+.motion-grid.collapsed,
+.fac-grid.collapsed,
+.eeg-grid.collapsed,
+.com-center.collapsed,
+.pow-avg-block.collapsed {
+  max-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  border-top: none;
+  border-bottom: none;
 }
 
 .pow-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
-  margin-bottom: 24px;
+  margin-top: 16px;
+}
+
+.pow-grid-header {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 20px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.3s, border-color 0.3s;
+  user-select: none;
+}
+
+.pow-grid-header:hover {
+  background: var(--surface2);
+  border-color: rgba(124, 58, 237, 0.4);
+}
+
+.pow-grid-header .toggle-icon {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  transition: transform 0.3s;
+}
+
+.pow-grid-header.active .toggle-icon {
+  transform: rotate(180deg);
+}
+
+@media (max-width: 1200px) {
+  .pow-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
 }
 
 .pow-card {
@@ -904,10 +980,10 @@ body {
 
 /* ── Band Power History Table ── */
 .pow-table-box {
-  margin-top: 24px;
+  margin-top: 0;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 0 0 var(--radius) var(--radius);
   overflow: hidden;
 }
 

@@ -40,29 +40,27 @@
         </div>
 
         <nav class="tab-nav" id="tabNav">
-            <button class="tab-btn active" data-tab="eeg">
-                <span class="tab-icon">🧠</span><span class="tab-label">腦電波 EEG</span>
+            <button class="tab-btn active" data-tab="pow">
+                <span class="tab-icon">⚡</span><span class="tab-label">頻帶功率</span>
             </button>
             <button class="tab-btn" data-tab="mot">
                 <span class="tab-icon">📐</span><span class="tab-label">動作感測</span>
             </button>
-            <button class="tab-btn" data-tab="dev">
-                <span class="tab-icon">📡</span><span class="tab-label">裝置資訊</span>
-            </button>
             <button class="tab-btn" data-tab="met">
                 <span class="tab-icon">🎯</span><span class="tab-label">效能指標</span>
-            </button>
-            <button class="tab-btn" data-tab="pow">
-                <span class="tab-icon">⚡</span><span class="tab-label">頻帶功率</span>
             </button>
             <button class="tab-btn" data-tab="com">
                 <span class="tab-icon">🧩</span><span class="tab-label">心智指令</span>
             </button>
-            <button class="tab-btn" data-tab="fac">
-                <span class="tab-icon">😊</span><span class="tab-label">臉部表情</span>
-            </button>
             <button class="tab-btn" data-tab="sys">
                 <span class="tab-icon">⚙️</span><span class="tab-label">系統事件</span>
+            </button>
+            <button class="tab-btn" data-tab="dev">
+                <span class="tab-icon">📡</span><span class="tab-label">裝置資訊</span>
+            </button>
+            <!-- EEG tab hidden via CSS -->
+            <button class="tab-btn" data-tab="eeg" style="display:none;">
+                <span class="tab-icon">🧠</span><span class="tab-label">腦電波 EEG</span>
             </button>
         </nav>
 
@@ -75,8 +73,8 @@
     <!-- MAIN CONTENT -->
     <main class="main">
 
-        <!-- ── EEG ── -->
-        <section class="tab-panel active" id="panel-eeg">
+        <!-- ── EEG (hidden) ── -->
+        <section class="tab-panel" id="panel-eeg" style="display:none;">
             <div class="panel-header">
                 <div class="panel-header-text">
                     <h1>🧠 腦電波 <span>EEG</span></h1>
@@ -87,11 +85,21 @@
                     <div class="csv-live-clock" id="clock-eeg"></div>
                 </div>
             </div>
-            <div class="eeg-grid" id="eegGrid">
-                <!-- channels injected by JS -->
-            </div>
-            <div class="chart-wrap">
-                <canvas id="eegCanvas"></canvas>
+            <div class="pow-grid-wrapper" style="margin-bottom: 24px;">
+                <div class="pow-grid-header active"
+                    onclick="document.getElementById('eegDataWrap').classList.toggle('collapsed'); this.classList.toggle('active')">
+                    <span class="pow-avg-title" style="pointer-events: none;">🧠 腦波波形</span>
+                    <span class="toggle-icon" style="pointer-events: none;">▼</span>
+                </div>
+                <div id="eegDataWrap" class="pow-table-box"
+                    style="border-top-left-radius:0; border-top-right-radius:0; border-top:none; margin:0;">
+                    <div class="eeg-grid" id="eegGrid">
+                        <!-- channels injected by JS -->
+                    </div>
+                    <div class="chart-wrap">
+                        <canvas id="eegCanvas"></canvas>
+                    </div>
+                </div>
             </div>
             <div class="raw-box">
                 <div class="raw-label">原始資料 Raw Data</div>
@@ -111,36 +119,108 @@
                     <div class="csv-live-clock" id="clock-mot"></div>
                 </div>
             </div>
-            <div class="motion-grid">
-                <div class="motion-card" id="motQuat">
-                    <div class="mc-title">四元數 Quaternion</div>
-                    <div class="mc-values" id="quatValues">
-                        <div class="mv-row"><span>Q0</span><span id="q0">—</span></div>
-                        <div class="mv-row"><span>Q1</span><span id="q1">—</span></div>
-                        <div class="mv-row"><span>Q2</span><span id="q2">—</span></div>
-                        <div class="mv-row"><span>Q3</span><span id="q3">—</span></div>
-                    </div>
+            <div class="pow-grid-wrapper" style="margin-bottom: 24px;">
+                <div class="pow-grid-header active"
+                    onclick="document.getElementById('motionGrid').classList.toggle('collapsed'); this.classList.toggle('active')">
+                    <span class="pow-avg-title" style="pointer-events: none;">📐 動作感測元件</span>
+                    <span class="toggle-icon" style="pointer-events: none;">▼</span>
                 </div>
-                <div class="motion-card">
-                    <div class="mc-title">加速度計 Accelerometer</div>
-                    <div class="mc-values">
-                        <div class="mv-row"><span>X</span><span id="accX">—</span></div>
-                        <div class="mv-row"><span>Y</span><span id="accY">—</span></div>
-                        <div class="mv-row"><span>Z</span><span id="accZ">—</span></div>
+                <div class="motion-grid pow-table-box" id="motionGrid">
+                    <div class="motion-card" id="motQuat">
+                        <div class="mc-title">四元數 Quaternion</div>
+                        <div class="mc-values" id="quatValues">
+                            <div class="mv-row"><span>Q0</span><span id="q0">—</span></div>
+                            <div class="mv-row"><span>Q1</span><span id="q1">—</span></div>
+                            <div class="mv-row"><span>Q2</span><span id="q2">—</span></div>
+                            <div class="mv-row"><span>Q3</span><span id="q3">—</span></div>
+                        </div>
                     </div>
-                </div>
-                <div class="motion-card">
-                    <div class="mc-title">磁力計 Magnetometer</div>
-                    <div class="mc-values">
-                        <div class="mv-row"><span>X</span><span id="magX">—</span></div>
-                        <div class="mv-row"><span>Y</span><span id="magY">—</span></div>
-                        <div class="mv-row"><span>Z</span><span id="magZ">—</span></div>
+                    <div class="motion-card">
+                        <div class="mc-title">加速度計 Accelerometer</div>
+                        <div class="mc-values">
+                            <div class="mv-row"><span>X</span><span id="accX">—</span></div>
+                            <div class="mv-row"><span>Y</span><span id="accY">—</span></div>
+                            <div class="mv-row"><span>Z</span><span id="accZ">—</span></div>
+                        </div>
+                    </div>
+                    <div class="motion-card">
+                        <div class="mc-title">磁力計 Magnetometer</div>
+                        <div class="mc-values">
+                            <div class="mv-row"><span>X</span><span id="magX">—</span></div>
+                            <div class="mv-row"><span>Y</span><span id="magY">—</span></div>
+                            <div class="mv-row"><span>Z</span><span id="magZ">—</span></div>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            <!-- ── Facial Expression ── -->
+            <div class="pow-grid-wrapper" style="margin-bottom: 24px;">
+                <div class="pow-grid-header active"
+                    onclick="document.getElementById('facDataWrap').classList.toggle('collapsed'); this.classList.toggle('active')">
+                    <span class="pow-avg-title" style="pointer-events: none;">😊 臉部表情 Facial Expression</span>
+                    <span class="toggle-icon" style="pointer-events: none;">▼</span>
+                </div>
+                <!-- ── 臉部動作區塊 ── -->
+                <div id="facDataWrap" class="pow-table-box fac-grid"
+                    style="border-top-left-radius:0; border-top-right-radius:0; border-top:none; margin:0;">
+                    <div class="fac-card">
+                        <div class="fc-icon">👁️</div>
+                        <div class="fc-title">眼部動作</div>
+                        <div class="fc-val" id="eyeAct">—</div>
+                    </div>
+                    <div class="fac-card">
+                        <div class="fc-icon">🙂</div>
+                        <div class="fc-title">上臉部動作</div>
+                        <div class="fc-val" id="uAct">—</div>
+                        <div class="fc-sub">強度 <span id="uPow">—</span></div>
+                    </div>
+                    <div class="fac-card">
+                        <div class="fc-icon">😶</div>
+                        <div class="fc-title">下臉部動作</div>
+                        <div class="fc-val" id="lAct">—</div>
+                        <div class="fc-sub">強度 <span id="lPow">—</span></div>
+                    </div>
+                </div>
+                <!-- ── 臉部歷史記錄 ── -->
+                <div class="pow-table-box"
+                    style="border-top:none; border-top-left-radius:0; border-top-right-radius:0; margin:0;">
+                    <div class="pow-table-header" style="background:var(--card-bg);">
+                        <span class="pow-table-title">歷史記錄</span>
+                        <span class="pow-table-count" id="facTableCount">0 筆</span>
+                    </div>
+                    <div class="pow-table-scroll">
+                        <table class="pow-history-table" id="facHistoryTable">
+                            <thead>
+                                <tr>
+                                    <th>時間</th>
+                                    <th>眼部動作</th>
+                                    <th>上臉部動作</th>
+                                    <th style="color:#a78bfa">上臉部強度</th>
+                                    <th>下臉部動作</th>
+                                    <th style="color:#a78bfa">下臉部強度</th>
+                                    <th style="color:#06b6d4">姿勢 (Q0,Q1,Q2,Q3)</th>
+                                    <th style="color:#10b981">加度計 (X,Y,Z)</th>
+                                    <th style="color:#f59e0b">磁力計 (X,Y,Z)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="facTableBody">
+                                <tr class="fac-table-empty">
+                                    <td colspan="9">等待資料…</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <div class="raw-box">
-                <div class="raw-label">原始資料 Raw Data</div>
+                <div class="raw-label">動作感測原始資料 Motion Raw Data</div>
                 <pre id="motRaw">等待資料…</pre>
+            </div>
+            <div class="raw-box">
+                <div class="raw-label">臉部表情原始資料 Facial Raw Data</div>
+                <pre id="facRaw">等待資料…</pre>
             </div>
         </section>
 
@@ -156,35 +236,70 @@
                     <div class="csv-live-clock" id="clock-dev"></div>
                 </div>
             </div>
-            <div class="dev-top">
-                <div class="battery-card">
-                    <div class="bat-label">電池電量</div>
-                    <div class="bat-bar-wrap">
-                        <div class="bat-bar" id="batBar"></div>
-                    </div>
-                    <div class="bat-pct" id="batPct">—%</div>
+            <div class="pow-grid-wrapper" style="margin-bottom: 24px;">
+                <div class="pow-grid-header active"
+                    onclick="document.getElementById('devDataWrap').classList.toggle('collapsed'); this.classList.toggle('active')">
+                    <span class="pow-avg-title" style="pointer-events: none;">📡 EEG裝置（Emotiv EEG）</span>
+                    <span class="toggle-icon" style="pointer-events: none;">▼</span>
                 </div>
-                <div class="signal-card">
-                    <div class="bat-label">整體訊號品質</div>
-                    <div class="signal-ring" id="signalRing">
-                        <svg viewBox="0 0 80 80">
-                            <circle cx="40" cy="40" r="34" stroke="#1e293b" stroke-width="8" fill="none" />
-                            <circle cx="40" cy="40" r="34" stroke="url(#sg)" stroke-width="8" fill="none"
-                                stroke-dasharray="213.6" stroke-dashoffset="213.6" stroke-linecap="round"
-                                transform="rotate(-90 40 40)" id="signalArc" />
-                            <defs>
-                                <linearGradient id="sg" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
-                                    <stop offset="0%" stop-color="#7c3aed" />
-                                    <stop offset="100%" stop-color="#06b6d4" />
-                                </linearGradient>
-                            </defs>
-                        </svg>
-                        <span id="signalPct">—%</span>
+                <div id="devDataWrap" class="pow-table-box"
+                    style="border-top-left-radius:0; border-top-right-radius:0; border-top:none; margin:0; padding:16px;">
+                    <div class="dev-top">
+                        <div class="battery-card">
+                            <div class="bat-label">電池電量</div>
+                            <div class="bat-bar-wrap">
+                                <div class="bat-bar" id="batBar"></div>
+                            </div>
+                            <div class="bat-pct" id="batPct">—%</div>
+                        </div>
+                        <div class="signal-card">
+                            <div class="bat-label">整體訊號品質</div>
+                            <div class="signal-ring" id="signalRing">
+                                <svg viewBox="0 0 80 80">
+                                    <circle cx="40" cy="40" r="34" stroke="#1e293b" stroke-width="8" fill="none" />
+                                    <circle cx="40" cy="40" r="34" stroke="url(#sg)" stroke-width="8" fill="none"
+                                        stroke-dasharray="213.6" stroke-dashoffset="213.6" stroke-linecap="round"
+                                        transform="rotate(-90 40 40)" id="signalArc" />
+                                    <defs>
+                                        <linearGradient id="sg" x1="0" y1="0" x2="80" y2="80"
+                                            gradientUnits="userSpaceOnUse">
+                                            <stop offset="0%" stop-color="#7c3aed" />
+                                            <stop offset="100%" stop-color="#06b6d4" />
+                                        </linearGradient>
+                                    </defs>
+                                </svg>
+                                <span id="signalPct">—%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cq-grid" id="cqGrid">
+                        <!-- electrode CQ injected by JS -->
                     </div>
                 </div>
             </div>
-            <div class="cq-grid" id="cqGrid">
-                <!-- electrode CQ injected by JS -->
+
+            <!-- ── 藍牙裝置資訊 (Polar H9) ── -->
+            <div class="dev-top" style="margin-top:16px;">
+                <div class="battery-card" style="width:100%; align-items:flex-start;">
+                    <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            ❤️ 藍牙心率裝置 (Polar H9)
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:32px; width:100%; margin-top:12px;">
+                        <div>
+                            <div class="bat-label" style="font-size:0.8rem; margin-bottom:4px; text-transform:none;">
+                                設備電量 Battery Level</div>
+                            <div class="bat-pct" id="bleBatPct" style="font-size:1.4rem;">—%</div>
+                        </div>
+                        <div>
+                            <div class="bat-label" style="font-size:0.8rem; margin-bottom:4px; text-transform:none;">
+                                感測器接觸狀態 Sensor Contact</div>
+                            <div class="bat-pct" id="bleContactStatus"
+                                style="font-size:1.4rem; color:var(--text-muted);">—</div>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="raw-box">
                 <div class="raw-label">原始資料 Raw Data</div>
@@ -207,31 +322,38 @@
             <div class="met-grid" id="metGrid">
                 <!-- metric cards injected by JS -->
             </div>
-            <div class="pow-table-box">
-                <div class="pow-table-header">
-                    <span class="pow-table-title">🎯 效能指標歷史記錄</span>
-                    <span class="pow-table-count" id="metTableCount">0 筆</span>
+            <div class="pow-grid-wrapper" style="margin-bottom: 24px;">
+                <div class="pow-grid-header active"
+                    onclick="document.getElementById('metTableWrapper').classList.toggle('collapsed'); this.classList.toggle('active')">
+                    <div class="pow-table-header" style="margin:0; padding:0; flex:1;">
+                        <span class="pow-table-title" style="pointer-events: none;">🎯 效能指標歷史記錄</span>
+                        <span class="pow-table-count" id="metTableCount" style="pointer-events: none;">0 筆</span>
+                    </div>
+                    <span class="toggle-icon" style="pointer-events: none;">▼</span>
                 </div>
-                <div class="pow-table-scroll">
-                    <table class="pow-history-table" id="metHistoryTable">
-                        <thead>
-                            <tr>
-                                <th>時間</th>
-                                <th style="color:#06b6d4">投入度</th>
-                                <th style="color:#f59e0b">興奮度</th>
-                                <th style="color:#f59e0b">長期興奮</th>
-                                <th style="color:#ef4444">壓力</th>
-                                <th style="color:#10b981">放鬆度</th>
-                                <th style="color:#a78bfa">興趣度</th>
-                                <th style="color:#7c3aed">專注度</th>
-                            </tr>
-                        </thead>
-                        <tbody id="metTableBody">
-                            <tr class="met-table-empty">
-                                <td colspan="8">等待資料…</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div class="pow-table-box" id="metTableWrapper"
+                    style="border-top-left-radius:0; border-top-right-radius:0; border-top:none;">
+                    <div class="pow-table-scroll">
+                        <table class="pow-history-table" id="metHistoryTable">
+                            <thead>
+                                <tr>
+                                    <th>時間</th>
+                                    <th style="color:#06b6d4">投入度</th>
+                                    <th style="color:#f59e0b">興奮度</th>
+                                    <th style="color:#f59e0b">長期興奮</th>
+                                    <th style="color:#ef4444">壓力</th>
+                                    <th style="color:#10b981">放鬆度</th>
+                                    <th style="color:#a78bfa">興趣度</th>
+                                    <th style="color:#7c3aed">專注度</th>
+                                </tr>
+                            </thead>
+                            <tbody id="metTableBody">
+                                <tr class="met-table-empty">
+                                    <td colspan="8">等待資料…</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
             <div class="raw-box">
@@ -241,7 +363,7 @@
         </section>
 
         <!-- ── Band Power ── -->
-        <section class="tab-panel" id="panel-pow">
+        <section class="tab-panel active" id="panel-pow">
             <div class="panel-header">
                 <div class="panel-header-text">
                     <h1>⚡ 頻帶功率 <span>Band Power</span></h1>
@@ -253,76 +375,185 @@
                 </div>
             </div>
 
-            <!-- ── 統計平均曲線圖 ── -->
-            <div class="pow-avg-block">
-                <div class="pow-avg-header">
-                    <span class="pow-avg-title">全電極平均腦波功率</span>
-                    <div class="pow-avg-legend">
-                        <span class="leg-dot" style="background:#a855f7"></span><span>Theta</span>
-                        <span class="leg-dot" style="background:#06b6d4"></span><span>Alpha</span>
-                        <span class="leg-dot" style="background:#10b981"></span><span>Beta</span>
-                        <span class="leg-dot" style="background:#ef4444"></span><span>Gamma</span>
-                    </div>
+            <!-- ── 心率監測 ── -->
+            <div class="pow-grid-wrapper" style="margin-bottom: 24px;">
+                <div class="pow-grid-header active"
+                    onclick="document.getElementById('bleBlockWrap').classList.toggle('collapsed'); this.classList.toggle('active')">
+                    <span class="pow-avg-title" style="pointer-events: none;">❤️ 藍牙心率監測 (Polar H9)</span>
+                    <span class="toggle-icon" style="pointer-events: none;">▼</span>
                 </div>
-                <!-- Current value badges -->
-                <div class="pow-avg-vals" id="powAvgVals">
-                    <div class="pav-item pav-ratio" style="cursor:pointer; transition:opacity 0.2s"
-                        onclick="togglePowBand('thetaAlpha', this)">
-                        <span class="pav-dot" style="background:linear-gradient(135deg,#f59e0b,#ef4444)"></span>
-                        <span class="pav-name">θ/α</span><span class="pav-val" id="avgThetaAlpha">—</span>
+                <div class="pow-avg-block" id="bleBlockWrap"
+                    style="border-top-left-radius:0; border-top-right-radius:0; border-top:none; margin-bottom:0;">
+                    <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+                        <button id="connectBleBtn"
+                            style="padding:6px 14px; border-radius:6px; background:#ef4444; color:white; border:none; cursor:pointer; font-weight:bold; font-family:var(--font); transition:0.3s;">
+                            連線 Polar H9
+                        </button>
                     </div>
-                    <div class="pav-item pav-theta" style="cursor:pointer; transition:opacity 0.2s"
-                        onclick="togglePowBand('theta', this)">
-                        <span class="pav-dot" style="background:#a855f7"></span>
-                        <span class="pav-name">Theta</span><span class="pav-val" id="avgTheta">—</span>
+                    <div class="pow-avg-vals" style="margin-bottom: 16px;">
+                        <div class="pav-item"
+                            style="border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.08);">
+                            <span class="pav-dot" style="background:#ef4444"></span>
+                            <span class="pav-name">即時心率 Heart Rate</span><span class="pav-val" id="hrValue">— BPM</span>
+                        </div>
+                        <div class="pav-item"
+                            style="border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.08);">
+                            <span class="pav-dot" style="background:#f59e0b"></span>
+                            <span class="pav-name">心跳間期 RR Interval</span><span class="pav-val" id="rrValue">— ms</span>
+                        </div>
                     </div>
-                    <div class="pav-item pav-alpha" style="cursor:pointer; transition:opacity 0.2s"
-                        onclick="togglePowBand('alpha', this)">
-                        <span class="pav-dot" style="background:#06b6d4"></span>
-                        <span class="pav-name">Alpha</span><span class="pav-val" id="avgAlpha">—</span>
+                    <div style="width:100%; overflow-x:auto;">
+                        <div class="pow-avg-chart-wrap" style="height: 250px;">
+                            <canvas id="bleChartCanvas"></canvas>
+                        </div>
                     </div>
-                    <div class="pav-item pav-beta" style="cursor:pointer; transition:opacity 0.2s"
-                        onclick="togglePowBand('beta', this)">
-                        <span class="pav-dot" style="background:#10b981"></span>
-                        <span class="pav-name">Beta</span><span class="pav-val" id="avgBeta">—</span>
-                    </div>
-                    <div class="pav-item pav-gamma" style="cursor:pointer; transition:opacity 0.2s"
-                        onclick="togglePowBand('gamma', this)">
-                        <span class="pav-dot" style="background:#ef4444"></span>
-                        <span class="pav-name">Gamma</span><span class="pav-val" id="avgGamma">—</span>
-                    </div>
-                </div>
-                <div class="pow-avg-chart-wrap">
-                    <canvas id="powAvgCanvas"></canvas>
                 </div>
             </div>
 
-            <div class="pow-grid" id="powGrid">
-                <!-- band power cards injected by JS -->
-            </div>
-            <div class="pow-table-box">
-                <div class="pow-table-header">
-                    <span class="pow-table-title">📊 頻帶功率歷史記錄</span>
-                    <span class="pow-table-count" id="powTableCount">0 筆</span>
+            <!-- (BLE History Table removed and unified with Pow History Table) -->
+            <!-- ── ESP32 健康感測數據 ── -->
+            <div class="pow-grid-wrapper" style="margin-bottom: 24px;">
+                <div class="pow-grid-header active"
+                    onclick="document.getElementById('espBlockWrap').classList.toggle('collapsed'); this.classList.toggle('active')">
+                    <span class="pow-avg-title" style="pointer-events: none;">💨 呼吸監測系統 (ESP32)</span>
+                    <span class="toggle-icon" style="pointer-events: none;">▼</span>
                 </div>
-                <div class="pow-table-scroll" id="powTableScroll">
-                    <table class="pow-history-table" id="powHistoryTable">
-                        <thead>
-                            <tr>
-                                <th>時間</th>
-                                <th style="color:#a855f7">Theta</th>
-                                <th style="color:#06b6d4">Alpha</th>
-                                <th style="color:#10b981">Beta</th>
-                                <th style="color:#ef4444">Gamma</th>
-                                <th style="color:#f59e0b">&theta;/&alpha;</th>
-                            </tr>
-                        </thead>
-                        <tbody id="powTableBody">
-                            <tr class="pow-table-empty">
-                                <td colspan="6">等待資料…</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div class="pow-avg-block" id="espBlockWrap"
+                    style="border-top-left-radius:0; border-top-right-radius:0; border-top:none; margin-bottom:0;">
+                    <div
+                        style="display:flex; justify-content:space-between; width:100%; align-items:center; margin-bottom: 16px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            💨 透過 USB 序列埠讀取 ESP32 數據
+                        </div>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span id="espStatusDot"
+                                style="width:10px; height:10px; border-radius:50%; background:#ef4444; display:inline-block;"></span>
+                            <span id="espStatusText" style="font-size:0.85rem; color:var(--text-muted);">偵測中…</span>
+                            <button id="espReleaseBtn" onclick="releaseAndConnectESP32()"
+                                style="padding:5px 12px; border-radius:6px; background:#7c3aed; color:white; border:none; cursor:pointer; font-weight:bold; font-size:0.8rem; font-family:var(--font); transition:0.3s;">
+                                ▶ 釋放並啟動感測
+                            </button>
+                        </div>
+                    </div>
+                    <div class="pow-avg-vals" style="margin-bottom: 16px;">
+                        <div class="pav-item"
+                            style="display:none; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.08);">
+                            <span class="pav-dot" style="background:#ef4444"></span>
+                            <span class="pav-name">即時心率 Heart Rate</span><span class="pav-val" id="espHrValue">—
+                                BPM</span>
+                        </div>
+                        <div class="pav-item"
+                            style="border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.08);">
+                            <span class="pav-dot" style="background:#10b981"></span>
+                            <span class="pav-name">血氧濃度 SpO2</span><span class="pav-val" id="espSpo2Value">— %</span>
+                        </div>
+                        <div class="pav-item"
+                            style="border-color: rgba(6, 182, 212, 0.4); background: rgba(6, 182, 212, 0.08);">
+                            <span class="pav-dot" style="background:#06b6d4"></span>
+                            <span class="pav-name">呼吸速率 Respiration</span><span class="pav-val" id="espRspValue">—
+                                次/分</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── 統計平均曲線圖 ── -->
+            <div class="pow-grid-wrapper" style="margin-bottom: 24px;">
+                <div class="pow-grid-header active"
+                    onclick="document.getElementById('powAvgBlockWrap').classList.toggle('collapsed'); this.classList.toggle('active')">
+                    <span class="pow-avg-title" style="pointer-events: none;">🧠 全電極平均腦波功率（EPOCX-E50210F1）</span>
+                    <span class="toggle-icon" style="pointer-events: none;">▼</span>
+                </div>
+                <div class="pow-avg-block" id="powAvgBlockWrap"
+                    style="border-top-left-radius:0; border-top-right-radius:0; border-top:none; margin-bottom:0;">
+                    <div class="pow-avg-header">
+                        <div class="pow-avg-legend" style="margin-left:0;">
+                            <span class="leg-dot" style="background:#a855f7"></span><span>Theta</span>
+                            <span class="leg-dot" style="background:#06b6d4"></span><span>Alpha</span>
+                            <span class="leg-dot" style="background:#10b981"></span><span>Beta</span>
+                            <span class="leg-dot" style="background:#ef4444"></span><span>Gamma</span>
+                        </div>
+                    </div>
+                    <!-- Current value badges -->
+                    <div class="pow-avg-vals" id="powAvgVals">
+                        <div class="pav-item pav-ratio" style="cursor:pointer; transition:opacity 0.2s"
+                            onclick="togglePowBand('thetaAlpha', this)">
+                            <span class="pav-dot" style="background:linear-gradient(135deg,#f59e0b,#ef4444)"></span>
+                            <span class="pav-name">θ/α</span><span class="pav-val" id="avgThetaAlpha">—</span>
+                        </div>
+                        <div class="pav-item pav-theta" style="cursor:pointer; transition:opacity 0.2s"
+                            onclick="togglePowBand('theta', this)">
+                            <span class="pav-dot" style="background:#a855f7"></span>
+                            <span class="pav-name">Theta</span><span class="pav-val" id="avgTheta">—</span>
+                        </div>
+                        <div class="pav-item pav-alpha" style="cursor:pointer; transition:opacity 0.2s"
+                            onclick="togglePowBand('alpha', this)">
+                            <span class="pav-dot" style="background:#06b6d4"></span>
+                            <span class="pav-name">Alpha</span><span class="pav-val" id="avgAlpha">—</span>
+                        </div>
+                        <div class="pav-item pav-beta" style="cursor:pointer; transition:opacity 0.2s"
+                            onclick="togglePowBand('beta', this)">
+                            <span class="pav-dot" style="background:#10b981"></span>
+                            <span class="pav-name">Beta</span><span class="pav-val" id="avgBeta">—</span>
+                        </div>
+                        <div class="pav-item pav-gamma" style="cursor:pointer; transition:opacity 0.2s"
+                            onclick="togglePowBand('gamma', this)">
+                            <span class="pav-dot" style="background:#ef4444"></span>
+                            <span class="pav-name">Gamma</span><span class="pav-val" id="avgGamma">—</span>
+                        </div>
+                    </div>
+                    <div style="width:100%; overflow-x:auto;">
+                        <div class="pow-avg-chart-wrap">
+                            <canvas id="powAvgCanvas"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pow-grid-wrapper" style="margin-bottom: 24px;">
+                <div class="pow-grid-header"
+                    onclick="document.getElementById('powGrid').classList.toggle('collapsed'); this.classList.toggle('active')">
+                    <span class="pow-avg-title" style="pointer-events: none;">⚡ 個別電極頻帶功率</span>
+                    <span class="toggle-icon" style="pointer-events: none;">▼</span>
+                </div>
+                <div class="pow-grid collapsed" id="powGrid">
+                    <!-- band power cards injected by JS -->
+                </div>
+            </div>
+            <div class="pow-grid-wrapper" style="margin-bottom: 24px;">
+                <div class="pow-grid-header active"
+                    onclick="document.getElementById('powTableWrapper').classList.toggle('collapsed'); this.classList.toggle('active')">
+                    <div class="pow-table-header" style="margin:0; padding:0; flex:1;">
+                        <span class="pow-table-title" style="pointer-events: none;">📊 歷史記錄</span>
+                        <span class="pow-table-count" id="powTableCount" style="pointer-events: none;">0 筆</span>
+                    </div>
+                    <span class="toggle-icon" style="pointer-events: none;">▼</span>
+                </div>
+                <div class="pow-table-box" id="powTableWrapper"
+                    style="border-top-left-radius:0; border-top-right-radius:0; border-top:none;">
+                    <div class="pow-table-scroll" id="powTableScroll">
+                        <table class="pow-history-table" id="powHistoryTable">
+                            <thead>
+                                <tr>
+                                    <th>時間</th>
+                                    <th style="color:#a855f7">Theta</th>
+                                    <th style="color:#06b6d4">Alpha</th>
+                                    <th style="color:#10b981">Beta</th>
+                                    <th style="color:#ef4444">Gamma</th>
+                                    <th style="color:#f59e0b">&theta;/&alpha;</th>
+                                    <th style="color:#ef4444">即時心率 (BPM)</th>
+                                    <th style="color:#f59e0b">心跳間期 (ms)</th>
+                                    <th style="color:#10b981">血氧濃度 SpO2 (%)</th>
+                                    <th style="color:#06b6d4">呼吸速率 (次/分)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="powTableBody">
+                                <tr class="pow-table-empty">
+                                    <td colspan="10">等待資料…</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </section>
@@ -339,23 +570,31 @@
                     <div class="csv-live-clock" id="clock-com"></div>
                 </div>
             </div>
-            <div class="com-center">
-                <div class="com-action-wrap">
-                    <div class="com-ring">
-                        <div class="com-action-label">當前指令</div>
-                        <div class="com-action" id="comAction">—</div>
-                    </div>
+            <div class="pow-grid-wrapper" style="margin-bottom: 24px;">
+                <div class="pow-grid-header active"
+                    onclick="document.getElementById('comDataWrap').classList.toggle('collapsed'); this.classList.toggle('active')">
+                    <span class="pow-avg-title" style="pointer-events: none;">🧩 心智動作偵測</span>
+                    <span class="toggle-icon" style="pointer-events: none;">▼</span>
                 </div>
-                <div class="com-power-wrap">
-                    <div class="cp-label">信心強度 Power</div>
-                    <div class="cp-bar-wrap">
-                        <div class="cp-bar" id="comPowerBar"></div>
+                <div id="comDataWrap" class="pow-table-box com-center"
+                    style="border-top-left-radius:0; border-top-right-radius:0; border-top:none; margin:0;">
+                    <div class="com-action-wrap">
+                        <div class="com-ring">
+                            <div class="com-action-label">當前指令</div>
+                            <div class="com-action" id="comAction">—</div>
+                        </div>
                     </div>
-                    <div class="cp-val" id="comPowerVal">—</div>
-                </div>
-                <div class="com-history" id="comHistory">
-                    <div class="ch-title">指令歷史</div>
-                    <ul id="comHistoryList"></ul>
+                    <div class="com-power-wrap">
+                        <div class="cp-label">信心強度 Power</div>
+                        <div class="cp-bar-wrap">
+                            <div class="cp-bar" id="comPowerBar"></div>
+                        </div>
+                        <div class="cp-val" id="comPowerVal">—</div>
+                    </div>
+                    <div class="com-history" id="comHistory">
+                        <div class="ch-title">指令歷史</div>
+                        <ul id="comHistoryList"></ul>
+                    </div>
                 </div>
             </div>
             <div class="raw-box">
@@ -364,67 +603,7 @@
             </div>
         </section>
 
-        <!-- ── Facial Expression ── -->
-        <section class="tab-panel" id="panel-fac">
-            <div class="panel-header">
-                <div class="panel-header-text">
-                    <h1>😊 臉部表情 <span>Facial Expression</span></h1>
-                    <p>眼部動作、上下臉部動作與強度</p>
-                </div>
-                <div class="csv-btn-wrap">
-                    <button class="csv-btn" id="csvBtn-fac" onclick="exportCSV('fac')">⬇ 匯出 CSV</button>
-                    <div class="csv-live-clock" id="clock-fac"></div>
-                </div>
-            </div>
-            <div class="fac-grid">
-                <div class="fac-card">
-                    <div class="fc-icon">👁️</div>
-                    <div class="fc-title">眼部動作</div>
-                    <div class="fc-val" id="eyeAct">—</div>
-                </div>
-                <div class="fac-card">
-                    <div class="fc-icon">🙂</div>
-                    <div class="fc-title">上臉部動作</div>
-                    <div class="fc-val" id="uAct">—</div>
-                    <div class="fc-sub">強度 <span id="uPow">—</span></div>
-                </div>
-                <div class="fac-card">
-                    <div class="fc-icon">😶</div>
-                    <div class="fc-title">下臉部動作</div>
-                    <div class="fc-val" id="lAct">—</div>
-                    <div class="fc-sub">強度 <span id="lPow">—</span></div>
-                </div>
-            </div>
-            <div class="pow-table-box">
-                <div class="pow-table-header">
-                    <span class="pow-table-title">😊 臉部表情歷史記錄</span>
-                    <span class="pow-table-count" id="facTableCount">0 筆</span>
-                </div>
-                <div class="pow-table-scroll">
-                    <table class="pow-history-table" id="facHistoryTable">
-                        <thead>
-                            <tr>
-                                <th>時間</th>
-                                <th>眼部動作</th>
-                                <th>上臉部動作</th>
-                                <th style="color:#a78bfa">上臉部強度</th>
-                                <th>下臉部動作</th>
-                                <th style="color:#a78bfa">下臉部強度</th>
-                            </tr>
-                        </thead>
-                        <tbody id="facTableBody">
-                            <tr class="fac-table-empty">
-                                <td colspan="6">等待資料…</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="raw-box">
-                <div class="raw-label">原始資料 Raw Data</div>
-                <pre id="facRaw">等待資料…</pre>
-            </div>
-        </section>
+        <!-- ── Facial Expression Section Removed (Merged to Motion) ── -->
 
         <!-- ── System ── -->
         <section class="tab-panel" id="panel-sys">
