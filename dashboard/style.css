@@ -250,6 +250,18 @@ body {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+  /* Sticky toolbar properties */
+  position: sticky;
+  top: var(--header-h); /* Stick exactly below the main header */
+  z-index: 90;
+  background: rgba(8, 12, 20, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 16px 20px;
+  margin: -16px -20px 28px -20px; /* Offset the padding visually */
+  border-bottom: 1px solid var(--border);
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
 }
 
 .panel-header-text {
@@ -311,7 +323,7 @@ body {
 .csv-btn-wrap {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: baseline;
   gap: 5px;
   flex-shrink: 0;
 }
@@ -735,14 +747,15 @@ body {
 
 .pav-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 6px 12px;
+  padding: 10px 14px;
   flex: 1;
-  min-width: 100px;
+  min-width: 150px;
 }
 
 .pav-dot {
@@ -756,13 +769,17 @@ body {
   font-size: 0.95rem;
   color: var(--text-muted);
   flex: 1;
+  white-space: nowrap;
 }
 
 .pav-val {
   font-family: var(--mono);
-  font-size: 0.9rem;
+  font-size: 1.1rem;
   font-weight: 600;
   color: var(--text);
+  width: 100%;
+  text-align: right;
+  margin-top: 4px;
 }
 
 .pav-ratio {
@@ -818,7 +835,8 @@ body {
   overflow-x: auto;
 }
 
-#powAvgCanvas, #bleChartCanvas {
+#powAvgCanvas,
+#bleChartCanvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
@@ -1604,4 +1622,202 @@ body {
   border-radius: 4px;
   font-family: var(--mono);
   font-size: 0.95rem;
+}
+
+/* ─────────────── FFT SPECTRUM ─────────────── */
+.fft-dominant-display {
+  text-align: center;
+  padding: 18px 16px 22px;
+  margin-bottom: 20px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.08), rgba(6, 182, 212, 0.06));
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  border-radius: var(--radius);
+}
+
+.fft-dominant-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 8px;
+}
+
+.fft-dominant-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.fft-dominant-band-name {
+  font-size: 1.8rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  transition: color 0.3s;
+}
+
+.fft-dominant-hz {
+  font-family: var(--mono);
+  font-size: 2.2rem;
+  font-weight: 700;
+  transition: color 0.3s;
+}
+
+.fft-band-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.fft-band-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.fft-band-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.fft-band-card.fft-dominant {
+  transform: scale(1.02);
+  box-shadow: 0 0 20px rgba(124, 58, 237, 0.15);
+}
+
+.fft-band-card.fft-dominant::before {
+  opacity: 1;
+}
+
+.fft-band-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.fft-band-card.fft-dominant .fft-band-dot {
+  animation: fft-pulse 1.5s infinite;
+}
+
+@keyframes fft-pulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.4);
+    opacity: 0.6;
+  }
+}
+
+.fft-band-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.fft-band-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.fft-band-range {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.fft-band-values {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.fft-band-hz {
+  font-family: var(--mono);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.3px;
+}
+
+.fft-band-mag {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.fft-channel-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.fft-ch-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.fft-ch-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface2);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.fft-ch-btn:hover {
+  color: var(--text);
+  border-color: rgba(124, 58, 237, 0.4);
+  background: rgba(124, 58, 237, 0.1);
+}
+
+.fft-ch-btn.active {
+  color: #fff;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.4), rgba(6, 182, 212, 0.3));
+  border-color: rgba(124, 58, 237, 0.6);
+  box-shadow: 0 0 12px rgba(124, 58, 237, 0.2);
+}
+
+#fftCanvas {
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes btn-blink {
+  0% { transform: scale(1); box-shadow: 0 0 0 rgba(0, 123, 255, 0); }
+  50% { transform: scale(1.05); box-shadow: 0 0 12px rgba(59, 130, 246, 0.8); }
+  100% { transform: scale(1); box-shadow: 0 0 0 rgba(0, 123, 255, 0); }
+}
+
+.blink-active {
+  animation: btn-blink 1s infinite alternate;
 }

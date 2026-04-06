@@ -42,15 +42,15 @@ def esp32_reader_thread():
     
     port = find_esp32_port()
     if not port:
-        print("⚠️  找不到 ESP32 序列埠，ESP32 功能已停用")
+        print("[WARN] 找不到 ESP32 序列埠，ESP32 功能已停用")
         return
     
-    print(f"🔌 找到 ESP32 序列埠: {port}")
+    print(f"[INFO] 找到 ESP32 序列埠: {port}")
     
     while True:
         try:
             ser = serial.Serial(port, 115200, timeout=2)
-            print(f"✅ ESP32 已連線: {port}")
+            print(f"[OK] ESP32 已連線: {port}")
             with esp32_lock:
                 esp32_data["connected"] = True
             
@@ -61,7 +61,7 @@ def esp32_reader_thread():
             ser.write(b'\x02')  # Ctrl+B
             time.sleep(0.5)
             ser.write(b'import integrated_health_monitor\r\n')
-            print("📡 已發送啟動指令: import integrated_health_monitor")
+            print("[INFO] 已發送啟動指令: import integrated_health_monitor")
             
             while True:
                 if ser.in_waiting > 0:
@@ -82,7 +82,7 @@ def esp32_reader_thread():
                             if m:
                                 with esp32_lock:
                                     esp32_data["heart_rate"] = float(m.group(1))
-                                print(f"  ❤️  心率: {m.group(1)} bpm")
+                                print(f"  [HR] 心率: {m.group(1)} bpm")
                         
                         # 解析血氧
                         if 'SpO2:' in line:
@@ -90,7 +90,7 @@ def esp32_reader_thread():
                             if m:
                                 with esp32_lock:
                                     esp32_data["spo2"] = float(m.group(1))
-                                print(f"  🩸 SpO2: {m.group(1)}%")
+                                print(f"  [SpO2] SpO2: {m.group(1)}%")
                         
                         # 解析呼吸速率
                         if '呼吸速率:' in line:
@@ -98,7 +98,7 @@ def esp32_reader_thread():
                             if m:
                                 with esp32_lock:
                                     esp32_data["rsp_rate"] = float(m.group(1))
-                                print(f"  🌬️  呼吸速率: {m.group(1)} 次/分")
+                                print(f"  [RSP] 呼吸速率: {m.group(1)} 次/分")
                         
                     except Exception as e:
                         pass
@@ -106,11 +106,11 @@ def esp32_reader_thread():
                     time.sleep(0.05)
                     
         except Exception as e:
-            print(f"⚠️  ESP32 連線中斷: {e}")
+            print(f"[WARN] ESP32 連線中斷: {e}")
             with esp32_lock:
                 esp32_data["connected"] = False
             time.sleep(3)  # 3 秒後重試
-            print("🔄 嘗試重新連接 ESP32...")
+            print("[INFO] 嘗試重新連接 ESP32...")
 
 
 # ─────────────────────────────────────────
@@ -192,7 +192,7 @@ class ConfigHandler(http.server.SimpleHTTPRequestHandler):
                         for pid in pids:
                             try:
                                 os.kill(pid, signal.SIGTERM)
-                                print(f"🔓 已釋放序列埠佔用程序 PID={pid}")
+                                print(f"[OK] 已釋放序列埠佔用程序 PID={pid}")
                             except ProcessLookupError:
                                 pass
                         result["success"] = True
@@ -213,6 +213,52 @@ class ConfigHandler(http.server.SimpleHTTPRequestHandler):
         
         else:
             return http.server.SimpleHTTPRequestHandler.do_GET(self)
+            
+    def do_POST(self):
+        if self.path == '/api/mne_analysis':
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            
+            try:
+                data = json.loads(post_data)
+                eeg_data = data.get('eeg_data', [])
+                
+                if not eeg_data or len(eeg_data) < 5 or len(eeg_data[0]) < 128:
+                    print("No raw EEG recorded, synthesizing 10 seconds of mock data for MNE analysis demonstration...")
+                    import numpy as np
+                    times = np.arange(0, 10, 1/128)
+                    mock_array = np.random.randn(5, len(times)) * 20
+                    mock_array[:, int(2*128):int(2.5*128)] += 50
+                    eeg_data = mock_array.tolist()
+                
+                # advanced_eeg_analysis.py is in the parent directory
+                parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                if parent_dir not in sys.path:
+                    sys.path.insert(0, parent_dir)
+                    
+                import advanced_eeg_analysis
+                # Run the 4 advanced analysis processes on the live memory buffer
+                report_file = advanced_eeg_analysis.run_analysis_from_data(eeg_data)
+                
+                import shutil
+                src_path = os.path.join(parent_dir, report_file)
+                dst_path = os.path.join(os.getcwd(), report_file)
+                # Ensure the report HTML is moved to the dashboard directory so it can be served
+                if os.path.exists(src_path):
+                    shutil.move(src_path, dst_path)
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "report_url": f"/{report_file}"}).encode('utf-8'))
+                
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode('utf-8'))
+        else:
+            self.send_error(404, "File not found")
     
     def log_message(self, format, *args):
         # 過濾掉 /esp32 的輪詢 log 避免洗版
@@ -227,8 +273,9 @@ if __name__ == "__main__":
     esp_thread = threading.Thread(target=esp32_reader_thread, daemon=True)
     esp_thread.start()
     
+    socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("", PORT), ConfigHandler) as httpd:
-        print(f"🌐 Serving at http://localhost:{PORT}")
+        print(f"[SERVER] Serving at http://localhost:{PORT}")
         print("Press Ctrl+C to stop")
         try:
             httpd.serve_forever()

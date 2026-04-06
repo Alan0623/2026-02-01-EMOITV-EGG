@@ -369,9 +369,30 @@
                     <h1>⚡ 頻帶功率 <span>Band Power</span></h1>
                     <p>各電極 theta / alpha / beta / gamma 統計平均曲線圖，betaL + betaH 合併為 beta</p>
                 </div>
-                <div class="csv-btn-wrap">
-                    <button class="csv-btn" id="csvBtn-pow" onclick="exportCSV('pow')">⬇ 匯出 CSV</button>
-                    <div class="csv-live-clock" id="clock-pow"></div>
+                <div class="csv-btn-wrap" style="flex-direction: row; align-items: baseline; gap: 12px;">
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="csv-btn" id="btnRecordStart"
+                            style="background:#10b981; border:none; padding:8px 12px; border-radius:6px; cursor:pointer;"
+                            onclick="setRecordStartTime()">紀錄開始</button>
+                        <button class="csv-btn" id="btnRecordStop"
+                            style="background:#ef4444; border:none; padding:8px 12px; border-radius:6px; cursor:pointer;"
+                            onclick="setRecordStopTime()">紀錄結束</button>
+                        <div style="display: flex; flex-direction: column; align-items: flex-start;">
+                            <span id="recordTimeRange"
+                                style="font-size:0.85rem; color:var(--text-muted); display:none; white-space:nowrap;"></span>
+                            <span id="recordStopwatch"
+                                style="font-size:1rem; color:#06b6d4; font-family:'JetBrains Mono', monospace; font-weight:bold; display:none; margin-top:2px;">⏱
+                                00:00.0</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button class="csv-btn" id="mneBtn" onclick="runMNEAnalysis()"
+                                style="background:rgba(124,58,237,0.3); border-color:#8b5cf6;">🧠 MNE 高階分析</button>
+                            <button class="csv-btn" id="csvBtn-pow" onclick="exportCSV('pow')">⬇ 匯出 CSV</button>
+                        </div>
+                        <div class="csv-live-clock" id="clock-pow"></div>
+                    </div>
                 </div>
             </div>
 
@@ -457,25 +478,136 @@
                 </div>
             </div>
 
+            <!-- ── 傅立葉頻譜分析 FFT Spectrum ── -->
+            <div class="pow-grid-wrapper" style="margin-bottom: 24px;">
+                <div class="pow-grid-header active"
+                    onclick="document.getElementById('fftBlockWrap').classList.toggle('collapsed'); this.classList.toggle('active')">
+                    <span class="pow-avg-title" style="pointer-events: none;">📊 即時傅立葉頻譜分析 (FFT Spectrum)</span>
+                    <span class="toggle-icon" style="pointer-events: none;">▼</span>
+                </div>
+                <div class="pow-avg-block" id="fftBlockWrap"
+                    style="border-top-left-radius:0; border-top-right-radius:0; border-top:none; margin-bottom:0;">
+                    <!-- Dominant Band Display -->
+                    <div class="fft-dominant-display">
+                        <div class="fft-dominant-label">當前主導腦波 Dominant Wave</div>
+                        <div class="fft-dominant-info">
+                            <span class="fft-dominant-band-name" id="fftDominantBand">— 等待資料</span>
+                            <span class="fft-dominant-hz" id="fftDominantHz">— Hz</span>
+                        </div>
+                    </div>
+                    <!-- Band Peak Cards -->
+                    <div class="fft-band-cards">
+                        <div class="fft-band-card" id="fftCard-Delta"
+                            style="border-color: rgba(236, 72, 153, 0.3); background: rgba(236, 72, 153, 0.06);">
+                            <div class="fft-band-dot" style="background:#ec4899"></div>
+                            <div class="fft-band-info">
+                                <div class="fft-band-name" style="color:#ec4899">δ Delta</div>
+                                <div class="fft-band-range">0.5 – 4 Hz</div>
+                            </div>
+                            <div class="fft-band-values">
+                                <div class="fft-band-hz" id="fftHz-Delta">— Hz</div>
+                                <div class="fft-band-mag" id="fftMag-Delta">—</div>
+                            </div>
+                        </div>
+                        <div class="fft-band-card" id="fftCard-Theta"
+                            style="border-color: rgba(168, 85, 247, 0.3); background: rgba(168, 85, 247, 0.06);">
+                            <div class="fft-band-dot" style="background:#a855f7"></div>
+                            <div class="fft-band-info">
+                                <div class="fft-band-name" style="color:#a855f7">θ Theta</div>
+                                <div class="fft-band-range">4 – 8 Hz</div>
+                            </div>
+                            <div class="fft-band-values">
+                                <div class="fft-band-hz" id="fftHz-Theta">— Hz</div>
+                                <div class="fft-band-mag" id="fftMag-Theta">—</div>
+                            </div>
+                        </div>
+                        <div class="fft-band-card" id="fftCard-Alpha"
+                            style="border-color: rgba(6, 182, 212, 0.3); background: rgba(6, 182, 212, 0.06);">
+                            <div class="fft-band-dot" style="background:#06b6d4"></div>
+                            <div class="fft-band-info">
+                                <div class="fft-band-name" style="color:#06b6d4">α Alpha</div>
+                                <div class="fft-band-range">8 – 13 Hz</div>
+                            </div>
+                            <div class="fft-band-values">
+                                <div class="fft-band-hz" id="fftHz-Alpha">— Hz</div>
+                                <div class="fft-band-mag" id="fftMag-Alpha">—</div>
+                            </div>
+                        </div>
+                        <div class="fft-band-card" id="fftCard-Beta"
+                            style="border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.06);">
+                            <div class="fft-band-dot" style="background:#10b981"></div>
+                            <div class="fft-band-info">
+                                <div class="fft-band-name" style="color:#10b981">β Beta</div>
+                                <div class="fft-band-range">13 – 30 Hz</div>
+                            </div>
+                            <div class="fft-band-values">
+                                <div class="fft-band-hz" id="fftHz-Beta">— Hz</div>
+                                <div class="fft-band-mag" id="fftMag-Beta">—</div>
+                            </div>
+                        </div>
+                        <div class="fft-band-card" id="fftCard-Gamma"
+                            style="border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.06);">
+                            <div class="fft-band-dot" style="background:#ef4444"></div>
+                            <div class="fft-band-info">
+                                <div class="fft-band-name" style="color:#ef4444">γ Gamma</div>
+                                <div class="fft-band-range">30 – 45 Hz</div>
+                            </div>
+                            <div class="fft-band-values">
+                                <div class="fft-band-hz" id="fftHz-Gamma">— Hz</div>
+                                <div class="fft-band-mag" id="fftMag-Gamma">—</div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Channel Selector & Spectrum Canvas -->
+                    <div class="fft-channel-selector">
+                        <span class="fft-ch-label">電極選擇：</span>
+                        <button class="fft-ch-btn active" onclick="setFFTChannel(0)">AF3</button>
+                        <button class="fft-ch-btn" onclick="setFFTChannel(1)">T7</button>
+                        <button class="fft-ch-btn" onclick="setFFTChannel(2)">Pz</button>
+                        <button class="fft-ch-btn" onclick="setFFTChannel(3)">T8</button>
+                        <button class="fft-ch-btn" onclick="setFFTChannel(4)">AF4</button>
+                    </div>
+                    <div style="width:100%; overflow-x:auto;">
+                        <div class="pow-avg-chart-wrap" style="height: 250px;">
+                            <canvas id="fftCanvas"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- ── 統計平均曲線圖 ── -->
             <div class="pow-grid-wrapper" style="margin-bottom: 24px;">
                 <div class="pow-grid-header active"
                     onclick="document.getElementById('powAvgBlockWrap').classList.toggle('collapsed'); this.classList.toggle('active')">
-                    <span class="pow-avg-title" style="pointer-events: none;">🧠 全電極平均腦波功率（EPOCX-E50210F1）</span>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span class="pow-avg-title" style="pointer-events: none;">🧠 全電極平均腦波（EPOCX-E50210F1）</span>
+                        <select id="powChartMode" onchange="window.setPowChartMode(this.value)"
+                            style="background:var(--card-bg-light); color:var(--text); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:4px 8px; font-family:var(--font); outline:none; cursor:pointer;"
+                            onclick="event.stopPropagation()">
+                            <option value="hz" selected>顯示主頻率 Frequency (Hz)</option>
+                            <option value="power">顯示功率 Power (µV²)</option>
+                        </select>
+                    </div>
                     <span class="toggle-icon" style="pointer-events: none;">▼</span>
                 </div>
                 <div class="pow-avg-block" id="powAvgBlockWrap"
                     style="border-top-left-radius:0; border-top-right-radius:0; border-top:none; margin-bottom:0;">
                     <div class="pow-avg-header">
                         <div class="pow-avg-legend" style="margin-left:0;">
-                            <span class="leg-dot" style="background:#a855f7"></span><span>Theta</span>
-                            <span class="leg-dot" style="background:#06b6d4"></span><span>Alpha</span>
-                            <span class="leg-dot" style="background:#10b981"></span><span>Beta</span>
-                            <span class="leg-dot" style="background:#ef4444"></span><span>Gamma</span>
+                            <span class="leg-dot" style="background:#a855f7"></span><span>Theta (4-8Hz)</span>
+                            <span class="leg-dot" style="background:#06b6d4"></span><span>Alpha (8-13Hz)</span>
+                            <span class="leg-dot" style="background:#10b981"></span><span>Beta (13-30Hz)</span>
+                            <span class="leg-dot" style="background:#ef4444"></span><span>Gamma (30-45Hz)</span>
                         </div>
                     </div>
                     <!-- Current value badges -->
                     <div class="pow-avg-vals" id="powAvgVals">
+                        <div class="pav-item"
+                            style="cursor:default; transition:opacity 0.2s; border-color: rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.05);">
+                            <span class="pav-dot" style="background:#fff"></span>
+                            <span class="pav-name">大腦平均頻率</span><span class="pav-val"
+                                style="color: #fff; font-weight: bold;" id="avgCentroidHz">— Hz</span>
+                        </div>
                         <div class="pav-item pav-ratio" style="cursor:pointer; transition:opacity 0.2s"
                             onclick="togglePowBand('thetaAlpha', this)">
                             <span class="pav-dot" style="background:linear-gradient(135deg,#f59e0b,#ef4444)"></span>
@@ -484,22 +616,22 @@
                         <div class="pav-item pav-theta" style="cursor:pointer; transition:opacity 0.2s"
                             onclick="togglePowBand('theta', this)">
                             <span class="pav-dot" style="background:#a855f7"></span>
-                            <span class="pav-name">Theta</span><span class="pav-val" id="avgTheta">—</span>
+                            <span class="pav-name">Theta (4-8Hz)</span><span class="pav-val" id="avgTheta">—</span>
                         </div>
                         <div class="pav-item pav-alpha" style="cursor:pointer; transition:opacity 0.2s"
                             onclick="togglePowBand('alpha', this)">
                             <span class="pav-dot" style="background:#06b6d4"></span>
-                            <span class="pav-name">Alpha</span><span class="pav-val" id="avgAlpha">—</span>
+                            <span class="pav-name">Alpha (8-13Hz)</span><span class="pav-val" id="avgAlpha">—</span>
                         </div>
                         <div class="pav-item pav-beta" style="cursor:pointer; transition:opacity 0.2s"
                             onclick="togglePowBand('beta', this)">
                             <span class="pav-dot" style="background:#10b981"></span>
-                            <span class="pav-name">Beta</span><span class="pav-val" id="avgBeta">—</span>
+                            <span class="pav-name">Beta (13-30Hz)</span><span class="pav-val" id="avgBeta">—</span>
                         </div>
                         <div class="pav-item pav-gamma" style="cursor:pointer; transition:opacity 0.2s"
                             onclick="togglePowBand('gamma', this)">
                             <span class="pav-dot" style="background:#ef4444"></span>
-                            <span class="pav-name">Gamma</span><span class="pav-val" id="avgGamma">—</span>
+                            <span class="pav-name">Gamma (30-45Hz)</span><span class="pav-val" id="avgGamma">—</span>
                         </div>
                     </div>
                     <div style="width:100%; overflow-x:auto;">
@@ -536,11 +668,14 @@
                             <thead>
                                 <tr>
                                     <th>時間</th>
-                                    <th style="color:#a855f7">Theta</th>
-                                    <th style="color:#06b6d4">Alpha</th>
-                                    <th style="color:#10b981">Beta</th>
-                                    <th style="color:#ef4444">Gamma</th>
+                                    <th style="color:#fff" id="powCentroidHeader">平均頻率 (Hz)</th>
+                                    <th style="color:#ec4899" id="powDeHeader">Delta (Hz)</th>
+                                    <th style="color:#a855f7" id="powThHeader">Theta (Hz)</th>
+                                    <th style="color:#06b6d4" id="powAlHeader">Alpha (Hz)</th>
+                                    <th style="color:#10b981" id="powBeHeader">Beta (Hz)</th>
+                                    <th style="color:#ef4444" id="powGaHeader">Gamma (Hz)</th>
                                     <th style="color:#f59e0b">&theta;/&alpha;</th>
+                                    <th style="color:#a855f7">當前主導腦波</th>
                                     <th style="color:#ef4444">即時心率 (BPM)</th>
                                     <th style="color:#f59e0b">心跳間期 (ms)</th>
                                     <th style="color:#10b981">血氧濃度 SpO2 (%)</th>
@@ -549,7 +684,7 @@
                             </thead>
                             <tbody id="powTableBody">
                                 <tr class="pow-table-empty">
-                                    <td colspan="10">等待資料…</td>
+                                    <td colspan="13">等待資料…</td>
                                 </tr>
                             </tbody>
                         </table>

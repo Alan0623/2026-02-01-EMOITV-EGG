@@ -76,11 +76,415 @@ console.error = function (...args) {
 const EEG_HISTORY = 200;
 let eegBuffer = EEG_CHANNELS.map(() => new Array(EEG_HISTORY).fill(4096));
 
+// ── FFT Analysis ──
+const EEG_SAMPLE_RATE = 128; // Emotiv EPOC X sample rate in Hz
+const FFT_SIZE = 128; // Must be power of 2; 128 samples → 1 Hz resolution
+
+// Band frequency ranges (Hz)
+const FFT_BANDS = [
+  { name: 'Delta', label: 'δ Delta', min: 0.5, max: 4, color: '#ec4899' },
+  { name: 'Theta', label: 'θ Theta', min: 4, max: 8, color: '#a855f7' },
+  { name: 'Alpha', label: 'α Alpha', min: 8, max: 13, color: '#06b6d4' },
+  { name: 'Beta', label: 'β Beta', min: 13, max: 30, color: '#10b981' },
+  { name: 'Gamma', label: 'γ Gamma', min: 30, max: 64, color: '#ef4444' },
+];
+
+// Store latest FFT results per channel
+let fftResults = EEG_CHANNELS.map(() => ({
+  magnitudes: new Float64Array(FFT_SIZE / 2),
+  peakHz: 0,
+  bandPeaks: {} // { Delta: {hz, mag}, Theta: {hz, mag}, ... }
+}));
+
+// Which channel to show in the FFT spectrum chart (index)
+let fftActiveChannel = 0;
+
+// Global var to pass Hz from FFT to Power Display
+let globalAvgHz = {};
+let globalAvgMag = {};
+
+// ── FFT Implementation (Cooley-Tukey radix-2) ──
+function fft(re, im) {
+  const n = re.length;
+  if (n <= 1) return;
+
+  // Bit-reversal permutation
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) {
+      j ^= bit;
+    }
+    j ^= bit;
+    if (i < j) {
+      [re[i], re[j]] = [re[j], re[i]];
+      [im[i], im[j]] = [im[j], im[i]];
+    }
+  }
+
+  // Cooley-Tukey butterfly
+  for (let len = 2; len <= n; len <<= 1) {
+    const halfLen = len >> 1;
+    const angle = -2 * Math.PI / len;
+    const wRe = Math.cos(angle);
+    const wIm = Math.sin(angle);
+    for (let i = 0; i < n; i += len) {
+      let curRe = 1, curIm = 0;
+      for (let j = 0; j < halfLen; j++) {
+        const tRe = curRe * re[i + j + halfLen] - curIm * im[i + j + halfLen];
+        const tIm = curRe * im[i + j + halfLen] + curIm * re[i + j + halfLen];
+        re[i + j + halfLen] = re[i + j] - tRe;
+        im[i + j + halfLen] = im[i + j] - tIm;
+        re[i + j] += tRe;
+        im[i + j] += tIm;
+        const newCurRe = curRe * wRe - curIm * wIm;
+        curIm = curRe * wIm + curIm * wRe;
+        curRe = newCurRe;
+      }
+    }
+  }
+}
+
+// Hanning window to reduce spectral leakage
+function hanningWindow(data) {
+  const n = data.length;
+  const windowed = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    windowed[i] = data[i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1)));
+  }
+  return windowed;
+}
+
+// Analyze a single channel's EEG buffer
+function analyzeFFT(channelIndex) {
+  const buf = eegBuffer[channelIndex];
+  // Take the last FFT_SIZE samples
+  const samples = buf.slice(-FFT_SIZE);
+
+  // Remove DC offset (subtract mean)
+  const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
+  const centered = samples.map(v => v - mean);
+
+  // Apply Hanning window
+  const windowed = hanningWindow(centered);
+
+  // Prepare FFT arrays
+  const re = new Float64Array(FFT_SIZE);
+  const im = new Float64Array(FFT_SIZE);
+  for (let i = 0; i < FFT_SIZE; i++) {
+    re[i] = windowed[i];
+    im[i] = 0;
+  }
+
+  fft(re, im);
+
+  // Compute magnitudes for positive frequencies
+  const halfN = FFT_SIZE / 2;
+  const magnitudes = new Float64Array(halfN);
+  for (let i = 0; i < halfN; i++) {
+    magnitudes[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]) / FFT_SIZE;
+  }
+
+  // Find peak Hz for each band
+  const bandPeaks = {};
+  const freqResolution = EEG_SAMPLE_RATE / FFT_SIZE; // Hz per bin
+
+  FFT_BANDS.forEach(band => {
+    const minBin = Math.max(1, Math.floor(band.min / freqResolution));
+    const maxBin = Math.min(halfN - 1, Math.ceil(band.max / freqResolution));
+    let peakMag = 0;
+    let peakBin = minBin;
+    for (let i = minBin; i <= maxBin; i++) {
+      if (magnitudes[i] > peakMag) {
+        peakMag = magnitudes[i];
+        peakBin = i;
+      }
+    }
+    bandPeaks[band.name] = {
+      hz: peakBin * freqResolution,
+      mag: peakMag
+    };
+  });
+
+  // Overall peak (1 Hz – 45 Hz)
+  let overallPeakMag = 0;
+  let overallPeakBin = 1;
+  const maxAnalyzeBin = Math.min(halfN - 1, Math.ceil(45 / freqResolution));
+  for (let i = 1; i <= maxAnalyzeBin; i++) {
+    if (magnitudes[i] > overallPeakMag) {
+      overallPeakMag = magnitudes[i];
+      overallPeakBin = i;
+    }
+  }
+
+  fftResults[channelIndex] = {
+    magnitudes,
+    peakHz: overallPeakBin * freqResolution,
+    bandPeaks
+  };
+}
+
+// Run FFT on all channels and update UI
+function runFFTAnalysis() {
+  EEG_CHANNELS.forEach((_, i) => analyzeFFT(i));
+  drawFFTCanvas();
+  updateFFTBandDisplay();
+}
+
+// Draw FFT frequency spectrum canvas
+function drawFFTCanvas() {
+  const canvas = document.getElementById('fftCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let W = canvas.parentElement.offsetWidth;
+  if (W < 600) W = 600;
+  const H = canvas.parentElement.offsetHeight || 220;
+  canvas.width = W; canvas.height = H;
+  ctx.clearRect(0, 0, W, H);
+
+  const result = fftResults[fftActiveChannel];
+  if (!result || !result.magnitudes.length) return;
+
+  const mags = result.magnitudes;
+  const freqRes = EEG_SAMPLE_RATE / FFT_SIZE;
+  const maxFreq = 50; // Display up to 50 Hz
+  const maxBin = Math.min(mags.length, Math.ceil(maxFreq / freqRes));
+
+  // Find max magnitude for scaling
+  let maxMag = 0;
+  for (let i = 1; i < maxBin; i++) {
+    if (mags[i] > maxMag) maxMag = mags[i];
+  }
+  if (maxMag === 0) maxMag = 1;
+
+  const padLeft = 45;
+  const padRight = 15;
+  const padTop = 15;
+  const padBottom = 30;
+  const chartW = W - padLeft - padRight;
+  const chartH = H - padTop - padBottom;
+
+  // Draw band background regions
+  FFT_BANDS.forEach(band => {
+    const x1 = padLeft + (band.min / maxFreq) * chartW;
+    const x2 = padLeft + (Math.min(band.max, maxFreq) / maxFreq) * chartW;
+    ctx.fillStyle = band.color + '12'; // very subtle
+    ctx.fillRect(x1, padTop, x2 - x1, chartH);
+    // Band label at top
+    ctx.fillStyle = band.color + '80';
+    ctx.font = '10px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText(band.name, (x1 + x2) / 2, padTop + 12);
+  });
+
+  // Draw grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let hz = 5; hz < maxFreq; hz += 5) {
+    const x = padLeft + (hz / maxFreq) * chartW;
+    ctx.moveTo(x, padTop); ctx.lineTo(x, padTop + chartH);
+  }
+  for (let i = 1; i <= 4; i++) {
+    const y = padTop + (i / 5) * chartH;
+    ctx.moveTo(padLeft, y); ctx.lineTo(padLeft + chartW, y);
+  }
+  ctx.stroke();
+
+  // Draw Hz axis labels
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.font = '10px Inter';
+  ctx.textAlign = 'center';
+  for (let hz = 0; hz <= maxFreq; hz += 5) {
+    const x = padLeft + (hz / maxFreq) * chartW;
+    ctx.fillText(hz + ' Hz', x, H - 8);
+  }
+
+  // Draw Y-axis labels
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const y = padTop + chartH - (i / 4) * chartH;
+    const val = (maxMag * i / 4).toFixed(1);
+    ctx.fillText(val, padLeft - 5, y + 3);
+  }
+
+  // Draw Y-axis line
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.beginPath();
+  ctx.moveTo(padLeft, padTop);
+  ctx.lineTo(padLeft, padTop + chartH);
+  ctx.stroke();
+
+  // Draw spectrum as filled area with gradient
+  const channelColors = ['#7c3aed', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
+  const lineColor = channelColors[fftActiveChannel] || '#7c3aed';
+
+  // Area fill
+  ctx.beginPath();
+  ctx.moveTo(padLeft, padTop + chartH);
+  for (let i = 1; i < maxBin; i++) {
+    const freq = i * freqRes;
+    const x = padLeft + (freq / maxFreq) * chartW;
+    const y = padTop + chartH - (mags[i] / maxMag) * chartH;
+    if (i === 1) ctx.lineTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  const lastFreq = (maxBin - 1) * freqRes;
+  ctx.lineTo(padLeft + (lastFreq / maxFreq) * chartW, padTop + chartH);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, padTop, 0, padTop + chartH);
+  grad.addColorStop(0, lineColor + '40');
+  grad.addColorStop(1, lineColor + '05');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  for (let i = 1; i < maxBin; i++) {
+    const freq = i * freqRes;
+    const x = padLeft + (freq / maxFreq) * chartW;
+    const y = padTop + chartH - (mags[i] / maxMag) * chartH;
+    i === 1 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Mark peak frequency with a glowing dot + label
+  const bandPeaks = result.bandPeaks;
+  FFT_BANDS.forEach(band => {
+    const peak = bandPeaks[band.name];
+    if (!peak || peak.mag < 0.000001) return;
+    const x = padLeft + (peak.hz / maxFreq) * chartW;
+    const y = padTop + chartH - (peak.mag / maxMag) * chartH;
+    // Glow
+    ctx.beginPath();
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = band.color + '40';
+    ctx.fill();
+    // Dot
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = band.color;
+    ctx.fill();
+    // Hz label
+    ctx.fillStyle = band.color;
+    ctx.font = 'bold 10px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText(peak.hz.toFixed(1) + ' Hz', x, y - 10);
+  });
+}
+
+function updateFFTBandDisplay() {
+  // Compute cross-channel average band peaks
+  const avgBandPeaks = {};
+  FFT_BANDS.forEach(band => {
+    let totalHz = 0;
+    let totalMag = 0;
+    let count = 0;
+    EEG_CHANNELS.forEach((_, ci) => {
+      const bp = fftResults[ci].bandPeaks[band.name];
+      if (bp && bp.mag > 0.000001) {
+        totalHz += bp.hz * bp.mag; // weighted average
+        totalMag += bp.mag;
+        count++;
+      }
+    });
+    avgBandPeaks[band.name] = {
+      hz: totalMag > 0 ? totalHz / totalMag : 0,
+      mag: totalMag / Math.max(count, 1)
+    };
+    globalAvgHz[band.name] = avgBandPeaks[band.name].hz;
+    globalAvgMag[band.name] = avgBandPeaks[band.name].mag;
+  });
+
+  // Update per-band Hz display
+  FFT_BANDS.forEach(band => {
+    const el = document.getElementById('fftHz-' + band.name);
+    const magEl = document.getElementById('fftMag-' + band.name);
+    const avg = avgBandPeaks[band.name];
+    if (el) el.textContent = avg.hz > 0 ? avg.hz.toFixed(1) + ' Hz' : '— Hz';
+    if (magEl) magEl.textContent = avg.mag > 0 ? avg.mag.toFixed(2) : '—';
+  });
+
+  // Find dominant band (highest magnitude)
+  let dominantBand = null;
+  let maxMag = 0;
+  FFT_BANDS.forEach(band => {
+    const avg = avgBandPeaks[band.name];
+    if (avg.mag > maxMag) {
+      maxMag = avg.mag;
+      dominantBand = band;
+    }
+  });
+
+  const domEl = document.getElementById('fftDominantBand');
+  const domHzEl = document.getElementById('fftDominantHz');
+  if (domEl && dominantBand) {
+    domEl.textContent = dominantBand.label;
+    domEl.style.color = dominantBand.color;
+    currentDominantBandName = dominantBand.name;
+  }
+  if (domHzEl && dominantBand) {
+    domHzEl.textContent = avgBandPeaks[dominantBand.name].hz.toFixed(1) + ' Hz';
+    domHzEl.style.color = dominantBand.color;
+  }
+
+  // Highlight active band cards
+  FFT_BANDS.forEach(band => {
+    const card = document.getElementById('fftCard-' + band.name);
+    if (card) {
+      card.classList.toggle('fft-dominant', dominantBand === band);
+    }
+  });
+}
+
+// Set the active FFT channel
+window.setFFTChannel = function (idx) {
+  fftActiveChannel = idx;
+  // Update button states
+  document.querySelectorAll('.fft-ch-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', i === idx);
+  });
+  drawFFTCanvas();
+};
+
+// Throttle FFT to ~4 Hz (every 250ms) to avoid excessive CPU usage
+let lastFFTTime = 0;
+const FFT_INTERVAL = 250;
+
+
 // ── Band-average ring buffer (theta / alpha / beta / gamma) ──
 const POW_HISTORY = 150;
 const POW_BAND_COLORS = { theta: '#a855f7', alpha: '#06b6d4', beta: '#10b981', gamma: '#ef4444', thetaAlpha: '#f59e0b' };
 let powAvgBuffer = { theta: new Array(POW_HISTORY).fill(0), alpha: new Array(POW_HISTORY).fill(0), beta: new Array(POW_HISTORY).fill(0), gamma: new Array(POW_HISTORY).fill(0), thetaAlpha: new Array(POW_HISTORY).fill(0) };
+let hzAvgBuffer = { theta: new Array(POW_HISTORY).fill(0), alpha: new Array(POW_HISTORY).fill(0), beta: new Array(POW_HISTORY).fill(0), gamma: new Array(POW_HISTORY).fill(0), thetaAlpha: new Array(POW_HISTORY).fill(0) };
 let powBandVisible = { theta: true, alpha: true, beta: true, gamma: true, thetaAlpha: true };
+let powChartMode = 'hz'; // 'power' or 'hz'
+
+window.setPowChartMode = function (mode) {
+  powChartMode = mode;
+  drawPowAvgCanvas();
+
+  const unit = mode === 'hz' ? ' (Hz)' : ' (µV²)';
+  const deEl = document.getElementById('powDeHeader'); if (deEl) deEl.textContent = 'Delta' + unit;
+  const thEl = document.getElementById('powThHeader'); if (thEl) thEl.textContent = 'Theta' + unit;
+  const alEl = document.getElementById('powAlHeader'); if (alEl) alEl.textContent = 'Alpha' + unit;
+  const beEl = document.getElementById('powBeHeader'); if (beEl) beEl.textContent = 'Beta' + unit;
+  const gaEl = document.getElementById('powGaHeader'); if (gaEl) gaEl.textContent = 'Gamma' + unit;
+
+  if (latestPowData && latestPowData.valid) {
+    const formatHz = (val) => val > 0 ? val.toFixed(1) + ' Hz' : '— Hz';
+    const updateUI = (id, b, powVal) => {
+      const e = document.getElementById(id);
+      if (e) e.textContent = mode === 'hz' ? formatHz(globalAvgHz[b] || 0) : powVal.toFixed(3) + ' µV²';
+    };
+    updateUI('avgTheta', 'Theta', latestPowData.theta);
+    updateUI('avgAlpha', 'Alpha', latestPowData.alpha);
+    updateUI('avgBeta', 'Beta', latestPowData.beta);
+    updateUI('avgGamma', 'Gamma', latestPowData.gamma);
+  }
+};
 
 window.togglePowBand = function (bandStr, el) {
   powBandVisible[bandStr] = !powBandVisible[bandStr];
@@ -92,6 +496,7 @@ window.togglePowBand = function (bandStr, el) {
 let powTableData = [];  // [{time, theta, alpha, beta, gamma}, ...]
 let lastPowRecordTime = 0; // 節流：每秒最多記錄 1 筆到 powTableData
 let latestPowData = { theta: 0, alpha: 0, beta: 0, gamma: 0, thetaAlpha: 0, valid: false };
+let currentDominantBandName = '—';
 
 // ── State ──
 let demoMode = false;
@@ -491,6 +896,12 @@ function updateEEG(data) {
     if (eegBuffer[i].length > EEG_HISTORY) eegBuffer[i].shift();
   });
   drawEEGCanvas();
+  // Trigger FFT analysis (throttled)
+  const now = Date.now();
+  if (now - lastFFTTime >= FFT_INTERVAL) {
+    lastFFTTime = now;
+    runFFTAnalysis();
+  }
   document.getElementById('eegRaw').textContent = JSON.stringify(data, null, 2);
 }
 
@@ -647,6 +1058,67 @@ function updateMet(data) {
   }
 }
 
+// 參考 10_overview (使用頻段合成 PSD) 模擬出 FFT Spectrum 曲線供圖表顯示 
+// （當 Emotiv API 未開啟付費 eeg 資料流時的替代/推算方案）
+function simulateFFTFromPow(channelIndex, bands) {
+  const halfN = FFT_SIZE / 2;
+  const freqResolution = EEG_SAMPLE_RATE / FFT_SIZE;
+  const magnitudes = new Float64Array(halfN);
+
+  const gaussian = (f, mu, sigma) => Math.exp(-0.5 * Math.pow((f - mu) / sigma, 2));
+
+  for (let i = 1; i < halfN; i++) {
+    const f = i * freqResolution;
+    // 1/f Base Noise (pink noise curve common in EEG)
+    const baseNoise = 0.5 / (f + 1);
+
+    // Extrapolated Gaussian peaks for each frequency band using available POW data
+    const tH = bands.theta * gaussian(f, 6, 1.5);
+    const aH = bands.alpha * gaussian(f, 10.5, 1.5);
+    const bL = bands.betaL * gaussian(f, 17.5, 3.0);
+    const bH = bands.betaH * gaussian(f, 26.0, 4.0);
+    const gH = bands.gamma * gaussian(f, 37.5, 5.0);
+
+    magnitudes[i] = baseNoise + (tH + aH + bL + bH + gH) * 0.15;
+  }
+
+  const bandPeaks = {};
+  if (typeof FFT_BANDS !== 'undefined') {
+    FFT_BANDS.forEach(band => {
+      const minBin = Math.max(1, Math.floor(band.min / freqResolution));
+      const maxBin = Math.min(halfN - 1, Math.ceil(band.max / freqResolution));
+      let peakMag = 0;
+      let peakBin = minBin;
+      for (let i = minBin; i <= maxBin; i++) {
+        if (magnitudes[i] > peakMag) {
+          peakMag = magnitudes[i];
+          peakBin = i;
+        }
+      }
+      bandPeaks[band.name] = {
+        hz: peakBin * freqResolution,
+        mag: peakMag
+      };
+    });
+  }
+
+  let overallPeakMag = 0;
+  let overallPeakBin = 1;
+  const maxAnalyzeBin = Math.min(halfN - 1, Math.ceil(45 / freqResolution));
+  for (let i = 1; i <= maxAnalyzeBin; i++) {
+    if (magnitudes[i] > overallPeakMag) {
+      overallPeakMag = magnitudes[i];
+      overallPeakBin = i;
+    }
+  }
+
+  fftResults[channelIndex] = {
+    magnitudes,
+    peakHz: overallPeakBin * freqResolution,
+    bandPeaks
+  };
+}
+
 function updatePow(data) {
   lastPowTime = Date.now();
   // pow: [AF3/theta, AF3/alpha, AF3/betaL, AF3/betaH, AF3/gamma, T7/theta, ...]
@@ -658,7 +1130,8 @@ function updatePow(data) {
   let sumTheta = 0, sumAlpha = 0, sumBetaL = 0, sumBetaH = 0, sumGamma = 0;
   const n = EEG_CHANNELS.length;
 
-  EEG_CHANNELS.forEach(ch => {
+  EEG_CHANNELS.forEach((ch, chIdx) => {
+    let chBands = { theta: 0, alpha: 0, betaL: 0, betaH: 0, gamma: 0 };
     BANDS.forEach(b => {
       let v = p[idx++];
       if (typeof v !== 'number' || isNaN(v)) v = 0;
@@ -666,13 +1139,20 @@ function updatePow(data) {
       const val = document.getElementById('powVal-' + ch + '-' + b);
       if (bar) bar.style.width = Math.min(100, (v / maxPow) * 100) + '%';
       if (val) val.textContent = v.toFixed(2);
-      if (b === 'theta') sumTheta += v;
-      if (b === 'alpha') sumAlpha += v;
-      if (b === 'betaL') sumBetaL += v;
-      if (b === 'betaH') sumBetaH += v;
-      if (b === 'gamma') sumGamma += v;
+      if (b === 'theta') { sumTheta += v; chBands.theta = v; }
+      if (b === 'alpha') { sumAlpha += v; chBands.alpha = v; }
+      if (b === 'betaL') { sumBetaL += v; chBands.betaL = v; }
+      if (b === 'betaH') { sumBetaH += v; chBands.betaH = v; }
+      if (b === 'gamma') { sumGamma += v; chBands.gamma = v; }
     });
+
+    // 如果沒有即時 eeg 資料，就透過該頻帶的 Pow 來推算合成即時 FFT 頻譜
+    simulateFFTFromPow(chIdx, chBands);
   });
+
+  // 觸發圖表更新 (因為推算了新的 FFT 數值)
+  if (typeof drawFFTCanvas === 'function') drawFFTCanvas();
+  if (typeof updateFFTBandDisplay === 'function') updateFFTBandDisplay();
 
   // Compute averages; merge betaL + betaH into beta
   const avgTheta = sumTheta / n;
@@ -680,12 +1160,40 @@ function updatePow(data) {
   const avgBeta = (sumBetaL + sumBetaH) / (2 * n);
   const avgGamma = sumGamma / n;
 
-  // Update badge values
-  const setAvg = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v.toFixed(3); };
-  setAvg('avgTheta', avgTheta);
-  setAvg('avgAlpha', avgAlpha);
-  setAvg('avgBeta', avgBeta);
-  setAvg('avgGamma', avgGamma);
+  // Calculate Spectral Centroid (Overall Hz)
+  const totalPow = avgTheta + avgAlpha + avgBeta + avgGamma;
+  const centroidHz = totalPow > 0 ? (avgTheta * 6 + avgAlpha * 10.5 + avgBeta * 21.5 + avgGamma * 37.5) / totalPow : 0;
+  let centroidStr = '';
+  if (centroidHz > 0) {
+    if (centroidHz < 4) centroidStr = 'Delta';
+    else if (centroidHz < 8) centroidStr = 'Theta';
+    else if (centroidHz < 13) centroidStr = 'Alpha';
+    else if (centroidHz < 30) centroidStr = 'Beta';
+    else centroidStr = 'Gamma';
+  }
+  const centroidEl = document.getElementById('avgCentroidHz');
+  if (centroidEl) {
+    centroidEl.textContent = centroidHz > 0 ? `${centroidHz.toFixed(1)} Hz (${centroidStr})` : '— Hz';
+  }
+
+  // Update badge values to show based on powChartMode
+  // 參考 10_overview: 以 PSD (功率譜密度) 各相鄰頻段能量比例，去「推算」局部頻段的重心 (Local Spectral Centroid)
+  const estThetaHz = 6.0 + ((avgAlpha - avgTheta) / (avgAlpha + avgTheta + 0.0001)) * 1.5;
+  const estAlphaHz = 10.5 + ((avgBeta - avgTheta) / (avgBeta + avgAlpha + avgTheta + 0.0001)) * 2.0;
+  const sumBetaLAvg = sumBetaL / n;
+  const sumBetaHAvg = sumBetaH / n;
+  const estBetaHz = (sumBetaLAvg * 17.5 + sumBetaHAvg * 26.0) / (sumBetaLAvg + sumBetaHAvg + 0.0001);
+  const estGammaHz = 37.5 + ((avgGamma - sumBetaHAvg) / (avgGamma + sumBetaHAvg + 0.0001)) * 2.0;
+
+  const formatHz = (val) => val > 0 ? val.toFixed(1) + ' Hz' : '— Hz';
+  const setHzOrPow = (id, estHz, powVal) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = powChartMode === 'hz' ? formatHz(estHz) : powVal.toFixed(3) + ' µV²';
+  };
+  setHzOrPow('avgTheta', estThetaHz, avgTheta);
+  setHzOrPow('avgAlpha', estAlphaHz, avgAlpha);
+  setHzOrPow('avgBeta', estBetaHz, avgBeta);
+  setHzOrPow('avgGamma', estGammaHz, avgGamma);
   // θ/α ratio
   const taVal = avgAlpha > 0 ? avgTheta / avgAlpha : 0;
   const thetaAlphaEl = document.getElementById('avgThetaAlpha');
@@ -698,16 +1206,29 @@ function updatePow(data) {
     beta: avgBeta,
     gamma: avgGamma,
     thetaAlpha: avgAlpha > 0 ? taVal : null,
+    hzTheta: estThetaHz,
+    hzAlpha: estAlphaHz,
+    hzBeta: estBetaHz,
+    hzGamma: estGammaHz,
+    centroidHz: centroidHz,
     valid: true
   };
 
   // Push to ring buffers
   const push = (key, v) => { powAvgBuffer[key].push(v); if (powAvgBuffer[key].length > POW_HISTORY) powAvgBuffer[key].shift(); };
+  const pushHz = (key, v) => { hzAvgBuffer[key].push(v); if (hzAvgBuffer[key].length > POW_HISTORY) hzAvgBuffer[key].shift(); };
+
   push('theta', avgTheta);
   push('alpha', avgAlpha);
   push('beta', avgBeta);
   push('gamma', avgGamma);
   push('thetaAlpha', avgAlpha > 0 ? avgTheta / avgAlpha : 0);
+
+  pushHz('theta', estThetaHz);
+  pushHz('alpha', estAlphaHz);
+  pushHz('beta', estBetaHz);
+  pushHz('gamma', estGammaHz);
+  pushHz('thetaAlpha', 0); // Not applicable for Hz mode
 
   drawPowAvgCanvas();
 }
@@ -716,10 +1237,10 @@ function drawPowAvgCanvas() {
   const canvas = document.getElementById('powAvgCanvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  
+
   let W = canvas.parentElement.offsetWidth;
   if (W < 1300) W = 1300;
-  
+
   const H = canvas.parentElement.offsetHeight || 220;
   canvas.width = W; canvas.height = H;
   ctx.clearRect(0, 0, W, H);
@@ -732,11 +1253,15 @@ function drawPowAvgCanvas() {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
   }
 
+  const targetBuffer = powChartMode === 'hz' ? hzAvgBuffer : powAvgBuffer;
+
   const bands = ['theta', 'alpha', 'beta', 'gamma', 'thetaAlpha'];
   let visibleVals = [];
   bands.forEach(band => {
     if (powBandVisible[band]) {
-      visibleVals.push(...powAvgBuffer[band]);
+      // thetaAlpha makes no sense in Hz mode, so ignore it for scaling if in hz mode
+      if (powChartMode === 'hz' && band === 'thetaAlpha') return;
+      visibleVals.push(...targetBuffer[band]);
     }
   });
 
@@ -746,7 +1271,9 @@ function drawPowAvgCanvas() {
 
   bands.forEach(band => {
     if (!powBandVisible[band]) return;
-    const buf = powAvgBuffer[band];
+    if (powChartMode === 'hz' && band === 'thetaAlpha') return; // Don't draw ratio line in Hz mode
+
+    const buf = targetBuffer[band];
 
     ctx.beginPath();
     ctx.strokeStyle = POW_BAND_COLORS[band];
@@ -760,6 +1287,15 @@ function drawPowAvgCanvas() {
     });
     ctx.stroke();
     ctx.globalAlpha = 1;
+
+    // Draw Hz grid lines text if in hz mode
+    if (powChartMode === 'hz') {
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.font = '10px Inter';
+      ctx.textAlign = 'right';
+      ctx.fillText(globalMax.toFixed(1) + ' Hz', W - 10, H * 0.05 + 8);
+      ctx.fillText(globalMin.toFixed(1) + ' Hz', W - 10, H * 0.95);
+    }
   });
 }
 
@@ -800,9 +1336,9 @@ function updateFac(data) {
   set('lPow', lPow);
   document.getElementById('facRaw').textContent = JSON.stringify(data, null, 2);
 
-  // ── 追加歷史記錄（節流：每秒最多 1 筆）──
+  // ── 追加歷史記錄（節流：每 200ms 最多 1 筆）──
   var now_ms = Date.now();
-  if (now_ms - lastFacRecordTime >= 1000) {
+  if (now_ms - lastFacRecordTime >= 200) {
     lastFacRecordTime = now_ms;
     var timeStr = getTimestamp();
     var rec = { time: timeStr, eyeAct: eyeAct, uAct: uAct, uPow: uPow, lAct: lAct, lPow: lPow };
@@ -812,17 +1348,17 @@ function updateFac(data) {
     var motRec = motHistory.length > 0 ? motHistory[motHistory.length - 1] : null;
     var motCols = '';
     if (motRec && Math.abs(Date.parse(motRec.time) - Date.parse(timeStr)) < 2000) {
-        // 資料夠新鮮
-        var quatStr = `${motRec.q0.toFixed(2)}, ${motRec.q1.toFixed(2)}, ${motRec.q2.toFixed(2)}, ${motRec.q3.toFixed(2)}`;
-        var accStr = `${motRec.accX.toFixed(2)}, ${motRec.accY.toFixed(2)}, ${motRec.accZ.toFixed(2)}`;
-        var magStr = `${motRec.magX.toFixed(2)}, ${motRec.magY.toFixed(2)}, ${motRec.magZ.toFixed(2)}`;
-        motCols = `
+      // 資料夠新鮮
+      var quatStr = `${motRec.q0.toFixed(2)}, ${motRec.q1.toFixed(2)}, ${motRec.q2.toFixed(2)}, ${motRec.q3.toFixed(2)}`;
+      var accStr = `${motRec.accX.toFixed(2)}, ${motRec.accY.toFixed(2)}, ${motRec.accZ.toFixed(2)}`;
+      var magStr = `${motRec.magX.toFixed(2)}, ${motRec.magY.toFixed(2)}, ${motRec.magZ.toFixed(2)}`;
+      motCols = `
           <td style="color:#06b6d4">${quatStr}</td>
           <td style="color:#10b981">${accStr}</td>
           <td style="color:#f59e0b">${magStr}</td>
         `;
     } else {
-        motCols = `
+      motCols = `
           <td style="color:#06b6d4">—</td>
           <td style="color:#10b981">—</td>
           <td style="color:#f59e0b">—</td>
@@ -925,9 +1461,10 @@ function blobURLDownload(blob, filename) {
   }
 }
 
-// 產生「2026/3/2 下午2:08:00」格式的繁中时間字串
+// 產生包含毫秒的字串
 function getTimestamp() {
-  return new Date().toLocaleString('zh-TW', {
+  const d = new Date();
+  const base = d.toLocaleString('zh-TW', {
     year: 'numeric',
     month: 'numeric',
     day: 'numeric',
@@ -936,9 +1473,116 @@ function getTimestamp() {
     second: '2-digit',
     hour12: true
   });
+  const ms = String(d.getMilliseconds()).padStart(3, '0');
+  return `${base}.${ms}`;
+}
+
+let recordStartTimePow = null;
+let recordStopTimePow = null;
+
+function setRecordStartTime() {
+  recordStartTimePow = Date.now();
+  recordStopTimePow = null;
+  updateRecordTimeDisplay();
+  const startBtn = document.getElementById('btnRecordStart');
+  if (startBtn) {
+    startBtn.disabled = true;
+    startBtn.style.opacity = '0.5';
+    startBtn.style.cursor = 'not-allowed';
+  }
+  const exportBtn = document.getElementById('csvBtn-pow');
+  if (exportBtn) {
+    exportBtn.classList.remove('blink-active');
+  }
+}
+
+function setRecordStopTime() {
+  recordStopTimePow = Date.now();
+  updateRecordTimeDisplay();
+  const startBtn = document.getElementById('btnRecordStart');
+  if (startBtn) {
+    startBtn.disabled = false;
+    startBtn.style.opacity = '1';
+    startBtn.style.cursor = 'pointer';
+  }
+  const exportBtn = document.getElementById('csvBtn-pow');
+  if (exportBtn) {
+    exportBtn.classList.add('blink-active');
+  }
+}
+
+function updateRecordTimeDisplay() {
+  const el = document.getElementById('recordTimeRange');
+  const swEl = document.getElementById('recordStopwatch');
+  if (!el) return;
+  if (!recordStartTimePow && !recordStopTimePow) {
+    el.style.display = 'none';
+    if (swEl) swEl.style.display = 'none';
+    return;
+  }
+  el.style.display = 'inline-block';
+  if (swEl) swEl.style.display = 'inline-block';
+  const formatTime = (ts) => ts ? new Date(ts).toLocaleTimeString('zh-TW', { hour12: false }) : '--:--:--';
+  el.textContent = `區間: ${formatTime(recordStartTimePow)} ~ ${formatTime(recordStopTimePow)}`;
+}
+
+function updateStopwatch() {
+  const swEl = document.getElementById('recordStopwatch');
+  if (!swEl || swEl.style.display === 'none') return;
+  if (!recordStartTimePow) return;
+
+  let endTs = Date.now();
+  if (recordStopTimePow && recordStopTimePow > recordStartTimePow) {
+    endTs = recordStopTimePow;
+  }
+
+  let diffMs = endTs - recordStartTimePow;
+  if (diffMs < 0) diffMs = 0;
+
+  const m = Math.floor(diffMs / 60000);
+  const s = Math.floor((diffMs % 60000) / 1000);
+  const msStr = String(diffMs % 1000).padStart(3, '0').slice(0, 1);
+
+  const displayM = String(m).padStart(2, '0');
+  const displayS = String(s).padStart(2, '0');
+  swEl.textContent = `⏱ ${displayM}:${displayS}.${msStr}`;
+}
+
+async function runMNEAnalysis() {
+  const btn = document.getElementById('mneBtn');
+  if (btn) btn.textContent = "⏳ 分析中 (約需幾十秒)...";
+
+  // 取得最新最高 10000 筆 raw EEG 紀錄送往後端做 MNE 解析
+  let payload = [];
+  if (typeof eegBuffer !== 'undefined' && eegBuffer.length > 0) {
+    payload = eegBuffer.map(chData => chData.slice(-10000));
+  }
+
+  try {
+    const res = await fetch("http://localhost:8765/api/mne_analysis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eeg_data: payload })
+    });
+    const result = await res.json();
+    if (result.success) {
+      alert("✅ MNE 高階分析完成！即將打開報告。");
+      window.open(result.report_url, '_blank');
+    } else {
+      alert("❌ MNE 分析失敗: " + result.error);
+    }
+  } catch (err) {
+    alert("❌ 請求發送失敗: " + err);
+  } finally {
+    if (btn) btn.textContent = "🧠 MNE 高階分析";
+  }
 }
 
 function exportCSV(tab) {
+  // 匯出前先移除閃爍特效
+  const btn = document.getElementById('csvBtn-' + tab);
+  if (btn) btn.classList.remove('blink-active');
+
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   let rows = [];
   const getText = id => { const el = document.getElementById(id); return el ? el.textContent.trim() : ''; };
@@ -957,23 +1601,23 @@ function exportCSV(tab) {
     case 'mot': {
       // 合併 Motion 與 Facial Data
       rows.push(['記錄時間', 'Q0', 'Q1', 'Q2', 'Q3', 'AccX', 'AccY', 'AccZ', 'MagX', 'MagY', 'MagZ', 'Eye Action', 'Upper Action', 'Upper Power', 'Lower Action', 'Lower Power']);
-      
+
       const combined = {};
       const uniqueTimes = new Set();
-      
+
       motHistory.forEach(d => {
         if (!combined[d.time]) combined[d.time] = {};
         combined[d.time].mot = d;
         uniqueTimes.add(d.time);
       });
-      
+
       facHistory.forEach(d => {
         if (!combined[d.time]) combined[d.time] = {};
         combined[d.time].fac = d;
         uniqueTimes.add(d.time);
       });
-      
-      const sortedTimes = Array.from(uniqueTimes).sort((a,b) => Date.parse(a) - Date.parse(b));
+
+      const sortedTimes = Array.from(uniqueTimes).sort((a, b) => Date.parse(a) - Date.parse(b));
 
       if (sortedTimes.length === 0) {
         rows.push([now, '—', '—', '—', '—', '—', '—', '—', '—', '—', '—', '—', '—', '—', '—', '—']);
@@ -981,7 +1625,7 @@ function exportCSV(tab) {
         sortedTimes.forEach(t => {
           const m = combined[t]?.mot;
           const f = combined[t]?.fac;
-          
+
           let mCols = m ? [
             m.q0.toFixed(4), m.q1.toFixed(4), m.q2.toFixed(4), m.q3.toFixed(4),
             m.accX.toFixed(4), m.accY.toFixed(4), m.accZ.toFixed(4),
@@ -1021,7 +1665,8 @@ function exportCSV(tab) {
       break;
     }
     case 'pow': {
-      rows.push(['記錄時間', 'Theta', 'Alpha', 'Beta', 'Gamma', 'θ/α', '即時心率 (BPM)', '心跳間期 (ms)', '血氧濃度 SpO2 (%)', '呼吸速率 (次/分)']);
+      const unit = powChartMode === 'hz' ? ' (Hz)' : ' (µV²)';
+      rows.push(['記錄時間', '平均頻率 (Hz)', 'Delta' + unit, 'Theta' + unit, 'Alpha' + unit, 'Beta' + unit, 'Gamma' + unit, 'θ/α', '當前主導腦波', '即時心率 (BPM)', '心跳間期 (ms)', '血氧濃度 SpO2 (%)', '呼吸速率 (次/分)']);
 
       const combined = {};
       const uniqueTimes = [];
@@ -1043,25 +1688,37 @@ function exportCSV(tab) {
       });
 
       if (uniqueTimes.length === 0) {
-        rows.push([now, '—', '—', '—', '—', '—', '—', '—', '—', '—']);
+        rows.push([now, '—', '—', '—', '—', '—', '—', '—', '—', '—', '—', '—']);
       } else {
-        // 反轉陣列，讓最新時間的排在最前面
-        [...uniqueTimes].reverse().forEach(t => {
+        // 依照原始推入順序（由舊到新），不需要 reverse()
+        uniqueTimes.forEach(t => {
           const p = combined[t].pow;
           const b = combined[t].ble;
 
-          let th = p ? p.theta.toFixed(3) : '—';
-          let al = p ? p.alpha.toFixed(3) : '—';
-          let be = p ? p.beta.toFixed(3) : '—';
-          let ga = p ? p.gamma.toFixed(3) : '—';
+          let dataTs = null;
+          if (p && p.ts) dataTs = p.ts;
+          else if (b && b.ts) dataTs = b.ts;
+
+          if (dataTs) {
+            if (recordStartTimePow && dataTs < recordStartTimePow) return;
+            if (recordStopTimePow && dataTs > recordStopTimePow) return;
+          }
+
+          let de = p ? (powChartMode === 'hz' ? (p.hzDelta > 0 ? p.hzDelta.toFixed(1) : '—') : (p.magDelta ? p.magDelta.toFixed(3) : '—')) : '—';
+          let th = p ? (powChartMode === 'hz' ? (p.hzTheta > 0 ? p.hzTheta.toFixed(1) : '—') : p.theta.toFixed(3)) : '—';
+          let al = p ? (powChartMode === 'hz' ? (p.hzAlpha > 0 ? p.hzAlpha.toFixed(1) : '—') : p.alpha.toFixed(3)) : '—';
+          let be = p ? (powChartMode === 'hz' ? (p.hzBeta > 0 ? p.hzBeta.toFixed(1) : '—') : p.beta.toFixed(3)) : '—';
+          let ga = p ? (powChartMode === 'hz' ? (p.hzGamma > 0 ? p.hzGamma.toFixed(1) : '—') : p.gamma.toFixed(3)) : '—';
           let ta = p ? (p.thetaAlpha !== null && p.thetaAlpha !== undefined ? p.thetaAlpha.toFixed(3) : '∞') : '—';
+          let domBand = p && p.dominantBand ? p.dominantBand : '—';
 
           let hr = b ? b.hr : '—';
           let rr = b ? b.rr : '—';
           let spo2 = b && b.spo2 !== undefined ? b.spo2 : '—';
           let rsp = b && b.rsp !== undefined ? b.rsp : '—';
+          let centroid = p && p.centroidHz ? p.centroidHz.toFixed(1) : '—';
 
-          rows.push([t, th, al, be, ga, ta, hr, rr, spo2, rsp]);
+          rows.push([t, centroid, de, th, al, be, ga, ta, domBand, hr, rr, spo2, rsp]);
         });
       }
       break;
@@ -1127,10 +1784,18 @@ function startDemo() {
   demoInterval = setInterval(() => {
     const t = Date.now() / 1000;
 
-    // EEG
-    const eegVals = EEG_CHANNELS.map((_, i) =>
-      4096 + Math.sin(t * (0.5 + i * 0.3)) * 200 + rand(-50, 50)
-    );
+    // EEG — multi-frequency components for realistic FFT results
+    // Each channel has a mix of alpha (~10 Hz), theta (~6 Hz), beta (~20 Hz), and gamma (~35 Hz)
+    const eegVals = EEG_CHANNELS.map((_, i) => {
+      const phase = i * 0.7; // phase offset per channel
+      return 4096
+        + Math.sin(2 * Math.PI * 10 * t + phase) * (120 + 30 * Math.sin(t * 0.1))   // alpha ~10 Hz (dominant)
+        + Math.sin(2 * Math.PI * 6 * t + phase) * (80 + 20 * Math.sin(t * 0.15))     // theta ~6 Hz
+        + Math.sin(2 * Math.PI * 20 * t + phase) * (50 + 15 * Math.sin(t * 0.2))     // beta ~20 Hz
+        + Math.sin(2 * Math.PI * 35 * t + phase) * (25 + 10 * Math.sin(t * 0.3))     // gamma ~35 Hz
+        + Math.sin(2 * Math.PI * 2 * t + phase) * (60 + 15 * Math.sin(t * 0.08))     // delta ~2 Hz
+        + rand(-30, 30);  // noise
+    });
     updateEEG({ eeg: eegVals, time: t });
 
     // Motion
@@ -1250,78 +1915,98 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── 每秒記錄一筆 BLE 心跳狀態到歷史紀錄並更新綜合表格 ──
     const hrEl = document.getElementById('hrValue');
     const rrEl = document.getElementById('rrValue');
-      let hrValStr = '—', rrValStr = '—';
+    let hrValStr = '—', rrValStr = '—';
 
-      // 取得 ESP32 數據
-      const espSpo2El = document.getElementById('espSpo2Value');
-      const espRspEl = document.getElementById('espRspValue');
-      let espSpo2Str = espSpo2El ? espSpo2El.textContent.trim() : '—';
-      let espRspStr = espRspEl ? espRspEl.textContent.trim() : '—';
-      if (espSpo2Str === '— %') espSpo2Str = '—';
-      if (espRspStr === '— 次/分') espRspStr = '—';
+    // 取得 ESP32 數據
+    const espSpo2El = document.getElementById('espSpo2Value');
+    const espRspEl = document.getElementById('espRspValue');
+    let espSpo2Str = espSpo2El ? espSpo2El.textContent.trim() : '—';
+    let espRspStr = espRspEl ? espRspEl.textContent.trim() : '—';
+    if (espSpo2Str === '— %') espSpo2Str = '—';
+    if (espRspStr === '— 次/分') espRspStr = '—';
 
-      if (hrEl && hrEl.textContent !== '—' && hrEl.textContent !== '— BPM') {
-        const hrVal = parseFloat(hrEl.textContent.replace(' BPM', ''));
-        if (!isNaN(hrVal)) {
-          bleChartBuffer.push(hrVal);
-          if (bleChartBuffer.length > BLE_CHART_HISTORY) bleChartBuffer.shift();
-        }
-        hrValStr = hrVal;
-        rrValStr = rrEl ? rrEl.textContent.replace(' ms', '') : '—';
+    if (hrEl && hrEl.textContent !== '—' && hrEl.textContent !== '— BPM') {
+      const hrVal = parseFloat(hrEl.textContent.replace(' BPM', ''));
+      if (!isNaN(hrVal)) {
+        bleChartBuffer.push(hrVal);
+        if (bleChartBuffer.length > BLE_CHART_HISTORY) bleChartBuffer.shift();
       }
+      hrValStr = hrVal;
+      rrValStr = rrEl ? rrEl.textContent.replace(' ms', '') : '—';
+    }
 
-      // 如果有取得 BLE 或 ESP32 資料，也記錄一份
-      if (hrValStr !== '—' || espSpo2Str !== '—' || espRspStr !== '—') {
-        const rec = {
-          time: t,
-          hr: hrValStr,
-          rr: rrValStr,
-          spo2: espSpo2Str,
-          rsp: espRspStr
-        };
+    // 如果有取得 BLE 或 ESP32 資料，也記錄一份
+    if (hrValStr !== '—' || espSpo2Str !== '—' || espRspStr !== '—') {
+      const rec = {
+        time: t,
+        ts: Date.now(),
+        hr: hrValStr,
+        rr: rrValStr,
+        spo2: espSpo2Str,
+        rsp: espRspStr
+      };
 
-        bleHistory.push(rec);
-        drawBleChartCanvas();
-      }
+      bleHistory.push(rec);
+      drawBleChartCanvas();
+    }
 
-      // ── 記錄 Band Power 到歷史陣列 (與 BLE 時間對齊) ──
-      if (Date.now() - lastPowTime < 2000 && latestPowData.valid) {
-        powTableData.push({
-          time: t,
-          theta: latestPowData.theta,
-          alpha: latestPowData.alpha,
-          beta: latestPowData.beta,
-          gamma: latestPowData.gamma,
-          thetaAlpha: latestPowData.thetaAlpha
-        });
-      }
+    // ── 記錄 Band Power 到歷史陣列 (與 BLE 時間對齊) ──
+    if (Date.now() - lastPowTime < 2000 && latestPowData.valid) {
+      powTableData.push({
+        time: t,
+        ts: Date.now(),
+        theta: latestPowData.theta,
+        alpha: latestPowData.alpha,
+        beta: latestPowData.beta,
+        gamma: latestPowData.gamma,
+        thetaAlpha: latestPowData.thetaAlpha,
+        hzTheta: latestPowData.hzTheta,
+        hzAlpha: latestPowData.hzAlpha,
+        hzBeta: latestPowData.hzBeta,
+        hzGamma: latestPowData.hzGamma,
+        hzDelta: globalAvgHz['Delta'] || 0,
+        magDelta: globalAvgMag['Delta'] || 0,
+        centroidHz: latestPowData.centroidHz,
+        dominantBand: currentDominantBandName
+      });
+    }
 
-      // 更新綜合歷史表格
-      const thEl = document.getElementById('avgTheta');
-      const alEl = document.getElementById('avgAlpha');
-      const beEl = document.getElementById('avgBeta');
-      const gaEl = document.getElementById('avgGamma');
-      const taEl = document.getElementById('avgThetaAlpha');
+    // 更新綜合歷史表格
+    const thEl = document.getElementById('avgTheta');
+    const alEl = document.getElementById('avgAlpha');
+    const beEl = document.getElementById('avgBeta');
+    const gaEl = document.getElementById('avgGamma');
+    const taEl = document.getElementById('avgThetaAlpha');
+    const centroidEl = document.getElementById('avgCentroidHz');
 
-      let th = thEl ? thEl.textContent : '—';
-      let al = alEl ? alEl.textContent : '—';
-      let be = beEl ? beEl.textContent : '—';
-      let ga = gaEl ? gaEl.textContent : '—';
-      let ta = taEl ? taEl.textContent : '—';
+    let th = thEl ? thEl.textContent : '—';
+    let al = alEl ? alEl.textContent : '—';
+    let be = beEl ? beEl.textContent : '—';
+    let ga = gaEl ? gaEl.textContent : '—';
+    let ta = taEl ? taEl.textContent : '—';
+    let centroidStrVal = centroidEl ? centroidEl.textContent : '—';
+    let de = '—';
+    if (globalAvgHz['Delta'] !== undefined && globalAvgMag['Delta'] !== undefined) {
+      if (powChartMode === 'hz') de = globalAvgHz['Delta'] > 0 ? globalAvgHz['Delta'].toFixed(1) + ' Hz' : '— Hz';
+      else de = globalAvgMag['Delta'] > 0 ? globalAvgMag['Delta'].toFixed(3) + ' µV²' : '— µV²';
+    }
 
-      if (th !== '—' || hrValStr !== '—' || espSpo2Str !== '—') {
-        const tbody = document.getElementById('powTableBody');
-        if (tbody) {
-          const empty = tbody.querySelector('.pow-table-empty');
-          if (empty) empty.remove();
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
+    if (th !== '—' || hrValStr !== '—' || espSpo2Str !== '—') {
+      const tbody = document.getElementById('powTableBody');
+      if (tbody) {
+        const empty = tbody.querySelector('.pow-table-empty');
+        if (empty) empty.remove();
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
             <td>${t}</td>
+            <td style="color:#fff">${centroidStrVal}</td>
+            <td style="color:#ec4899">${de}</td>
             <td style="color:#a855f7">${th}</td>
             <td style="color:#06b6d4">${al}</td>
             <td style="color:#10b981">${be}</td>
             <td style="color:#ef4444">${ga}</td>
             <td style="color:#f59e0b">${ta}</td>
+            <td style="color:#a855f7">${currentDominantBandName}</td>
             <td style="color:#ef4444">${hrValStr}</td>
             <td style="color:#f59e0b">${rrValStr}</td>
             <td style="color:#10b981">${espSpo2Str}</td>
@@ -1333,20 +2018,21 @@ document.addEventListener('DOMContentLoaded', () => {
       const countEl = document.getElementById('powTableCount');
       if (countEl) countEl.textContent = Math.max(powTableData.length, bleHistory.length) + ' 筆';
     }
+    if (typeof updateStopwatch === 'function') updateStopwatch();
   }
-  tickClocks(); // 立即顯示，不等第一秒
-  setInterval(tickClocks, 1000);
+  tickClocks(); // 立即顯示
+  setInterval(tickClocks, 200);
 
   // ── 建立繪製心率圖表的函式 ──
   function drawBleChartCanvas() {
     const canvas = document.getElementById('bleChartCanvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    
+
     // 取得 parent container width, 至少確保大於 1300
     let W = canvas.parentElement.offsetWidth;
     if (W < 1300) W = 1300;
-    
+
     const H = canvas.parentElement.offsetHeight || 250;
     canvas.width = W;
     canvas.height = H;
@@ -1446,14 +2132,14 @@ function startESP32Polling() {
       const resp = await fetch('/esp32');
       if (!resp.ok) return;
       const data = await resp.json();
-      
+
       const dot = document.getElementById('espStatusDot');
       const txt = document.getElementById('espStatusText');
-      
+
       if (data.connected) {
         if (dot) dot.style.background = '#10b981';
         if (txt) txt.textContent = '已連線';
-        
+
         if (data.heart_rate !== null) {
           const el = document.getElementById('espHrValue');
           if (el) el.textContent = data.heart_rate.toFixed(1) + ' BPM';
@@ -1482,12 +2168,12 @@ async function releaseAndConnectESP32() {
   const txt = document.getElementById('espStatusText');
   if (btn) { btn.textContent = '釋放中...'; btn.style.background = '#f59e0b'; }
   if (txt) txt.textContent = '釋放佔用程序…';
-  
+
   try {
     const resp = await fetch('/esp32/release');
     const result = await resp.json();
     console.log('[ESP32 Release]', result);
-    
+
     if (result.success) {
       if (txt) txt.textContent = result.message + '，準備連線…';
       if (btn) { btn.textContent = '✔ 已釋放並啟動'; btn.style.background = '#10b981'; }
